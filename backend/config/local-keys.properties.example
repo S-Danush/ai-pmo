@@ -1,0 +1,43 @@
+# Copy this file to local-keys.properties in this same folder and fill in your values.
+# local-keys.properties is gitignored — do not commit it.
+#
+#   copy local-keys.properties.example local-keys.properties   (Windows CMD)
+#   Copy-Item local-keys.properties.example local-keys.properties   (PowerShell)
+
+openai.api.key=sk-your-openai-key-here
+# If OpenAI calls fail with PKIX / SSL handshake errors: prefer production fixes (see README-SSL.md):
+# ssl.truststore.path=C:/path/to/truststore.p12
+# ssl.truststore.password=
+# ssl.truststore.type=PKCS12
+# proxy.host=proxy.company.com
+# proxy.port=8080
+# ssl.startup-validation.enabled=true
+# Local dev ONLY (insecure — never in production):
+# http.client.openai.trust-all-certificates=true
+# Optional: override default from application.properties
+# openai.model=gpt-4o-mini
+# Abort agent run if live OpenAI fails after retries (default false = metric fallback insight)
+# ai.fail-fast=true
+# ai.openai.max-attempts=3
+# http.client.openai.connect-timeout-ms=5000
+# http.client.openai.read-timeout-ms=10000
+teams.webhook.url=
+
+# Optional: in-memory AI cache TTL (see application.properties default)
+# ai.cache.ttl.minutes=30
+
+# Jira Cloud/Server REST (optional — see application.properties)
+# jira.base.url=https://your-domain.atlassian.net
+# jira.email=you@company.com
+# jira.api.token=your-atlassian-api-token
+# jira.jql=project = TEAM ORDER BY updated DESC
+# Or use jira.project=TEAM instead of jira.jql
+# Issue types for JQL issuetype IN (...) and server-side filter (omit Sub-tasks unless listed):
+# jira.issue.types=Story,Task,Bug
+# When true (default), the resolved JQL appends an open-ticket filter (e.g. statusCategory != Done).
+# Set false only if you need done/closed issues in the same JQL.
+# jira.open-tickets-only=true
+
+# GitHub (optional)
+# github.token=ghp_...
+# github.repo=org/repository

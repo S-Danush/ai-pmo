@@ -1,0 +1,9 @@
+{
+  "java.jdt.ls.lombokSupport.enabled": true,
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.import.maven.enabled": false,
+  "java.import.gradle.enabled": true,
+  "java.import.gradle.wrapper.enabled": true,
+  "java.project.importOnFirstTimeStartup": "automatic",
+  "java.compile.nullAnalysis.mode": "disabled"
+}

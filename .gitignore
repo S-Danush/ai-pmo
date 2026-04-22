@@ -1,0 +1,11 @@
+**/target/
+**/build/
+**/.gradle/
+**/node_modules/
+**/.angular/
+**/dist/
+.idea/
+*.iml
+.env
+**/application-local.properties
+**/config/local-keys.properties

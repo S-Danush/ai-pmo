@@ -1,0 +1,226 @@
+<div class="page">
+  <header class="header">
+    <h1>AI PMO Agent</h1>
+    <p class="subtitle">Delay detection, AI insights, and Microsoft Teams alerts</p>
+  </header>
+
+  <section class="card data-mode-card">
+    <label class="toggle-label">
+      <input
+        type="checkbox"
+        [checked]="useSimulation"
+        (change)="onSimulationChange($any($event.target).checked)"
+      />
+      <span>Use simulated demo data</span>
+    </label>
+    <p class="muted meta toggle-hint">
+      When on, the API uses curated SIM-* tickets so demos always show strong signals. When off,
+      the backend uses Jira/GitHub (or mock fallback).
+    </p>
+  </section>
+
+  <div *ngIf="error" class="card error-banner">{{ error }}</div>
+
+  <section class="card status-card" [ngClass]="statusClass()">
+    <div class="status-head">
+      <div>
+        <div class="status-title-row">
+          <h2>Project status</h2>
+          <span *ngIf="dataQualityBadge()" [class]="dataQualityBadgeClass()" [attr.title]="projectSummary?.dataQuality">
+            {{ dataQualityBadge() }}
+          </span>
+        </div>
+        <div class="health-row">
+          <span class="dot" [attr.data-status]="projectSummary?.status ?? 'GREEN'"></span>
+          <span class="health-text">{{ healthLabel() }}</span>
+        </div>
+        <p class="exec-banner" *ngIf="projectSummary?.reasonForStatus">
+          {{ projectSummary?.reasonForStatus }}
+        </p>
+        <p class="exec-banner muted" *ngIf="projectSummary?.trendSummary">
+          {{ projectSummary?.trendSummary }}
+        </p>
+        <p class="bottleneck" *ngIf="projectSummary?.topBottleneck">
+          Top bottleneck: <strong>{{ projectSummary?.topBottleneck }}</strong>
+        </p>
+        <p class="muted meta" *ngIf="trendLabel()">{{ trendLabel() }}</p>
+        <p class="muted meta" *ngIf="delayEstimateLabel()">{{ delayEstimateLabel() }}</p>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn secondary" (click)="loadDashboard()" [disabled]="loading">
+          Refresh
+        </button>
+        <button type="button" class="btn primary" (click)="runAgent()" [disabled]="loading">
+          {{ loading ? 'Running…' : 'Run Agent' }}
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="summary-row" *ngIf="projectSummary">
+    <div class="summary-card">
+      <span class="summary-value">{{ projectSummary.totalTickets }}</span>
+      <span class="summary-label">Total (engine)</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-value">{{ projectSummary.stuckTickets }}</span>
+      <span class="summary-label">Stuck (engine)</span>
+    </div>
+    <div class="summary-card warn">
+      <span class="summary-value">{{ projectSummary.criticalTickets }}</span>
+      <span class="summary-label">Critical (engine)</span>
+    </div>
+  </section>
+
+  <section class="card project-health-card" *ngIf="projectHealth">
+    <h2>📊 Project health</h2>
+    <div class="project-health-row">
+      <div class="ph-item">
+        <span class="ph-n">{{ projectHealth.totalOpenTickets }}</span>
+        <span class="ph-l">Open tickets</span>
+      </div>
+      <div class="ph-item ph-risk-high">
+        <span class="ph-n">{{ projectHealth.highRiskCount }}</span>
+        <span class="ph-l">High risk</span>
+      </div>
+      <div class="ph-item ph-blocked">
+        <span class="ph-n">{{ projectHealth.blockedCount }}</span>
+        <span class="ph-l">Blocked</span>
+      </div>
+      <div class="ph-item ph-warn">
+        <span class="ph-n">{{ projectHealth.atRiskCount }}</span>
+        <span class="ph-l">At risk</span>
+      </div>
+      <div class="ph-item ph-ok">
+        <span class="ph-n">{{ projectHealth.healthyCount }}</span>
+        <span class="ph-l">Healthy</span>
+      </div>
+      <div class="ph-item ph-unass">
+        <span class="ph-n">{{ projectHealth.unassignedCount }}</span>
+        <span class="ph-l">Unassigned</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card tickets-board">
+    <div class="tickets-head">
+      <h2>Delivery queue</h2>
+      <button type="button" class="btn-ghost" (click)="clearFilters()">Clear filters</button>
+    </div>
+    <div class="filter-bar" *ngIf="tickets.length">
+      <label>
+        <span>Assignee</span>
+        <select [(ngModel)]="filterAssignee" class="sel">
+          <option value="">All</option>
+          <option *ngFor="let a of uniqueAssignees()" [value]="a.value">{{ a.label }}</option>
+        </select>
+      </label>
+      <label>
+        <span>Risk</span>
+        <select [(ngModel)]="filterRisk" class="sel">
+          <option value="">All</option>
+          <option value="HIGH">High</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="LOW">Low</option>
+        </select>
+      </label>
+      <label>
+        <span>Status</span>
+        <select [(ngModel)]="filterStatus" class="sel">
+          <option value="">All</option>
+          <option *ngFor="let s of uniqueDisplayStatuses()" [value]="s">{{ s }}</option>
+        </select>
+      </label>
+      <label>
+        <span>Aging</span>
+        <select [(ngModel)]="filterAging" class="sel">
+          <option value="">All</option>
+          <option value="Normal">Normal</option>
+          <option value="Watch">Watch</option>
+          <option value="At Risk">At risk</option>
+        </select>
+      </label>
+    </div>
+
+    <p class="muted" *ngIf="!tickets.length && !loading">No tickets in this view.</p>
+    <div *ngIf="loading && !tickets.length" class="skeleton-table" aria-hidden="true">
+      <div class="skeleton-row" *ngFor="let _ of skeletonRows"></div>
+    </div>
+    <div *ngIf="loading && !tickets.length" class="muted skeleton-caption">Loading…</div>
+
+    <ng-container *ngIf="visibleTickets().length || (!loading && tickets.length)">
+      <div class="group-block" *ngFor="let key of viewGroupOrder">
+        <h3 class="group-h" *ngIf="ticketsInGroup(key).length">
+          {{ groupIcon(key) }} {{ groupHeading(key) }} ({{ ticketsInGroup(key).length }})
+        </h3>
+        <div class="ticket-card-grid" *ngIf="ticketsInGroup(key).length">
+          <article
+            *ngFor="let t of ticketsInGroup(key)"
+            class="ticket-card"
+            [ngClass]="riskPillClass(t)"
+          >
+            <div class="tc-id mono">{{ t.id }}</div>
+            <div class="tc-summary">"{{ ticketTitle(t) }}"</div>
+            <div class="tc-row">
+              <span>Status: {{ displayStatus(t) }}</span>
+            </div>
+            <div class="tc-row">Assignee: {{ displayAssignee(t) }}</div>
+            <div class="tc-row">Time in status: {{ t.timeInStatusLabel || '—' }}</div>
+            <div class="tc-row muted">Last updated: {{ t.lastActivityLabel || '—' }}</div>
+            <div class="tc-row" *ngIf="t.movementStatus">Movement: {{ t.movementStatus }}</div>
+            <div class="tc-row" *ngIf="t.agingBucket">Aging: {{ t.agingBucket }}</div>
+            <div class="tc-risk">
+              Risk: <span [ngClass]="riskPillClass(t)">{{ riskLabel(t) }}</span>
+            </div>
+          </article>
+        </div>
+      </div>
+      <p *ngIf="!visibleTickets().length && tickets.length" class="muted">No tickets match the current filters.</p>
+    </ng-container>
+  </section>
+
+  <section class="card" *ngIf="insightTickets().length">
+    <h2>AI insights</h2>
+    <p class="muted">Structured analysis for outlier tickets (after Run Agent).</p>
+    <div class="insight-grid">
+      <details *ngFor="let t of insightTickets()" class="insight-details">
+        <summary class="insight-summary">
+          <span class="mono">{{ t.id }}</span>
+          <span class="sep">·</span>
+          {{ displayStatus(t) }}
+          <span class="sev-pill" [ngClass]="severityClass(t.severity)">{{ t.severity }}</span>
+          <span *ngIf="t.confidence" class="conf-pill">AI confidence: {{ t.confidence }}</span>
+        </summary>
+        <article class="insight-body">
+          <div class="field root">
+            <span class="label">Root cause</span>
+            <p>{{ t.rootCause || '—' }}</p>
+          </div>
+          <div class="field">
+            <span class="label">Impact</span>
+            <p>{{ t.impact || '—' }}</p>
+          </div>
+          <div class="field">
+            <span class="label">Recommended action</span>
+            <p>{{ t.recommendedAction || '—' }}</p>
+          </div>
+          <div class="field full" *ngIf="t.insight">
+            <span class="label">Full analysis</span>
+            <p>{{ t.insight }}</p>
+          </div>
+          <div class="field">
+            <span class="label">Teams nudge</span>
+            <p class="nudge">{{ t.nudge || '—' }}</p>
+          </div>
+        </article>
+      </details>
+    </div>
+  </section>
+
+  <section class="card muted-hint" *ngIf="tickets.length && !insightTickets().length && !loading">
+    <p>
+      Run the agent to generate AI insights and Teams notifications for tickets marked
+      <strong>MEDIUM</strong> or <strong>HIGH</strong> severity.
+    </p>
+  </section>
+</div>
