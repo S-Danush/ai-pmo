@@ -1,76 +1,58 @@
-# TLS / PKIX troubleshooting (OpenAI `https://api.openai.com`)
+# TLS / PKIX (Jira, GitHub, Groq LLM)
 
-The backend uses a **standard, verifying** TLS stack (Apache HttpClient 5 + JVM or custom trust material). **Do not** enable `http.client.openai.trust-all-certificates` in production.
+All outbound HTTPS clients share **one** `SSLContext` from `SslConfig`: **Apache HttpClient 5** with normal PKIX verification (no certificate bypass).
 
-On startup, if `ssl.startup-validation.enabled=true` (default), the app performs a **non-fatal** TLS probe to `https://api.openai.com` using the same `SSLContext` as outbound HTTP clients. Check logs for `SSL startup validation SUCCESS` or `FAILED`.
+- **Default:** JVM trust anchors (`JAVA_HOME/lib/security/cacerts`) — enough for public Atlassian Cloud, GitHub, and Groq when the JDK is current.
+- **Corporate SSL inspection / extra roots:** Set `ssl.truststore.path` to a PKCS12/JKS file. That file is **merged** into a single KeyStore **with** the JVM `cacerts`, so public CAs keep working while your corporate CA is trusted.
 
-## Configuration (application.properties or `config/local-keys.properties`)
+## Configuration (`application.properties` or `config/local-keys.properties`)
 
 | Property | Purpose |
 |----------|---------|
-| `ssl.truststore.path` | Optional path to a truststore file (JKS, PKCS12, etc.) containing extra CAs (e.g. corporate root, inspection CA). |
-| `ssl.truststore.password` | Truststore password (can be empty for some types). |
-| `ssl.truststore.type` | Optional; leave blank for `KeyStore.getDefaultType()`, or set `JKS`, `PKCS12`, etc. |
-| `proxy.host` / `proxy.port` | Optional HTTP proxy (`http` scheme) for outbound traffic, including HTTPS via CONNECT. |
-| `ssl.startup-validation.enabled` | Set `false` to skip the startup TLS probe (e.g. air-gapped CI). |
+| `ssl.enabled` | Default `true`. When `false`, uses `SSLContext.getDefault()` only — no custom file merge (emergency/local). |
+| `ssl.truststore.path` | Optional extra CA bundle (merged with JVM cacerts when set). |
+| `ssl.truststore.password` | Truststore password (optional for some types). |
+| `ssl.truststore.type` | Optional; blank = `KeyStore.getDefaultType()`, or `JKS`, `PKCS12`, etc. |
+| `proxy.host` / `proxy.port` | HTTP `CONNECT` proxy for all HTTPS clients (Jira, GitHub, Groq LLM). |
+| `ssl.startup-validation.enabled` | When `true`, probes `ssl.startup-validation.llm-url` (Groq) and `ssl.startup-validation.github-url` at startup using the **same** `SSLContext`. |
+| `ssl.startup-validation.fail-fast` | When `true` (default), startup **throws** if any probe fails (PKIX, timeout, etc.). Set `false` only for CI/air-gap with no egress. |
 
-## 1. If you see a PKIX / certificate path error
+## Startup logs
 
-- Confirm **Java 11+** (Java 17 is used by this project’s toolchain):
+Look for:
 
-  ```bash
-  java -version
-  ```
+- `SSL configured: mode=...` — JVM-only vs merged trust material.
+- `Merged JVM cacerts (...) with custom trust material: jdkCerts=... extraCerts=...`
+- `Apache HttpClient (integration ...)` / `(Groq LLM)` — PKIX enabled, timeouts.
+- `SSL startup validation SUCCESS` — probes passed.
+- Or `IllegalStateException` from `SslStartupValidator` when fail-fast is on.
 
-- Ensure the **full chain** presented by the server (or SSL inspection appliance) is trusted by either the **JVM default cacerts** or your **`ssl.truststore.path`** file.
+## PKIX errors
 
-## 2. If you are behind a corporate HTTP proxy
+1. Confirm **Java 17+** (`java -version`).
+2. Import missing CA certificates into **`ssl.truststore.path`** (recommended) or into JVM `cacerts`.
+3. Behind a proxy: set `proxy.host` / `proxy.port`.
+4. If bootstrap fails only in CI with no internet: `ssl.startup-validation.enabled=false` or `ssl.startup-validation.fail-fast=false`.
 
-Set:
-
-```properties
-proxy.host=your.proxy.company.com
-proxy.port=8080
-```
-
-If the proxy itself uses TLS or needs authentication, extend the stack later (this build configures a standard HTTP `CONNECT` proxy as above).
-
-## 3. Export and import a server / inspection certificate
-
-Inspect the chain OpenAI (or your proxy) presents:
+### Inspect TLS chain
 
 ```bash
-openssl s_client -showcerts -connect api.openai.com:443 </dev/null
+openssl s_client -showcerts -connect api.groq.com:443 </dev/null
 ```
 
-Save the PEM for the CA you need as `openai-or-proxy-ca.crt`, then import into the JVM truststore **or** a dedicated truststore file.
-
-**Import into JVM cacerts** (Linux/macOS example; default password is often `changeit`):
-
-```bash
-keytool -importcert -trustcacerts -noprompt \
-  -alias openai-or-proxy-ca \
-  -file openai-or-proxy-ca.crt \
-  -keystore "$JAVA_HOME/lib/security/cacerts" \
-  -storepass changeit
-```
-
-On Windows, adjust paths, e.g. `%JAVA_HOME%\lib\security\cacerts`.
-
-## 4. Prefer a dedicated truststore (recommended for prod)
-
-Create a PKCS12 or JKS truststore that contains only the extra CAs you need, then point the app at it:
+Import the CA PEM into a PKCS12 truststore:
 
 ```properties
-ssl.truststore.path=C:/secrets/company-truststore.p12
-ssl.truststore.password=your-secret
+ssl.truststore.path=C:/secrets/corp-truststore.p12
+ssl.truststore.password=secret
 ssl.truststore.type=PKCS12
 ```
 
-Restart the application and confirm `SSL startup validation SUCCESS` in logs.
+Restart and confirm `SSL startup validation SUCCESS`.
 
-## 5. Related application properties
+## Related timeouts
 
-- OpenAI HTTP timeouts (also used by the shared `RestTemplate` bean from `SslConfig`):  
-  `http.client.openai.connect-timeout-ms`, `http.client.openai.read-timeout-ms`
-- **Local dev only** (insecure): `http.client.openai.trust-all-certificates=true` — **never** in production.
+| Client | Properties |
+|--------|----------------|
+| Jira / GitHub / shared `RestTemplate` | `http.client.connect-timeout-ms`, `http.client.read-timeout-ms` |
+| Groq LLM | `http.client.openai.connect-timeout-ms`, `http.client.openai.read-timeout-ms` |

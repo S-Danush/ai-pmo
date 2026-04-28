@@ -14,25 +14,22 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
- * Holds the last successful {@link AgentService#runAgent(boolean)} snapshot per mode (simulation
- * vs integration) for {@code GET /api/insights}.
+ * Holds the last successful {@link AgentService#runAgent()} snapshot for {@code GET /api/insights}.
  */
 @Component
 public class AgentResultStore {
 
-    private final AtomicReference<AgentRunResponse> lastRunIntegration = new AtomicReference<>(null);
-    private final AtomicReference<AgentRunResponse> lastRunSimulation = new AtomicReference<>(null);
+    private final AtomicReference<AgentRunResponse> lastRun = new AtomicReference<>(null);
 
-    public void setLastRun(AgentRunResponse response, boolean simulation) {
-        AtomicReference<AgentRunResponse> slot = simulation ? lastRunSimulation : lastRunIntegration;
-        slot.set(copyResponse(response, simulation));
+    public void setLastRun(AgentRunResponse response) {
+        lastRun.set(copyResponse(response));
     }
 
-    public AgentRunResponse getLastRun(boolean simulation) {
-        return simulation ? lastRunSimulation.get() : lastRunIntegration.get();
+    public AgentRunResponse getLastRun() {
+        return lastRun.get();
     }
 
-    private static AgentRunResponse copyResponse(AgentRunResponse in, boolean simulation) {
+    private static AgentRunResponse copyResponse(AgentRunResponse in) {
         if (in == null) {
             return null;
         }
@@ -46,7 +43,8 @@ public class AgentResultStore {
                 .tickets(tickets)
                 .projectSummary(copySummary(in.getProjectSummary()))
                 .projectHealth(copyHealth(in.getProjectHealth()))
-                .simulation(simulation)
+                .simulation(in.isSimulation())
+                .generatedAt(in.getGeneratedAt())
                 .build();
     }
 
@@ -78,6 +76,9 @@ public class AgentResultStore {
                 .estimatedDelayDays(s.getEstimatedDelayDays())
                 .trendSummary(s.getTrendSummary())
                 .reasonForStatus(s.getReasonForStatus())
+                .projectRiskSummary(s.getProjectRiskSummary())
+                .deliveryInsight(s.getDeliveryInsight())
+                .portfolioDeliveryRisk(s.getPortfolioDeliveryRisk())
                 .dataQuality(s.getDataQuality() != null ? s.getDataQuality() : DataQuality.MOCK)
                 .prDataAvailable(s.isPrDataAvailable())
                 .jiraDataAvailable(s.isJiraDataAvailable())
@@ -93,6 +94,8 @@ public class AgentResultStore {
                 .createdAt(t.getCreatedAt())
                 .jiraUpdatedAt(t.getJiraUpdatedAt())
                 .assignee(t.getAssignee())
+                .priority(t.getPriority())
+                .bottleneckCategory(t.getBottleneckCategory())
                 .displayStatus(
                         t.getDisplayStatus() != null
                                 ? t.getDisplayStatus()
@@ -109,9 +112,23 @@ public class AgentResultStore {
                 .prTime(t.getPrTime())
                 .statusChanges(t.getStatusChanges())
                 .pingPongTransitions(t.getPingPongTransitions())
+                .bounceCount(t.getBounceCount())
+                .prStatus(t.getPrStatus())
+                .dependency(t.getDependency())
+                .correlationInsights(
+                        t.getCorrelationInsights() != null
+                                ? new ArrayList<>(t.getCorrelationInsights())
+                                : new ArrayList<>())
+                .complexity(t.getComplexity())
+                .prNumber(t.getPrNumber())
+                .prUrl(t.getPrUrl())
+                .branchName(t.getBranchName())
+                .lastCommitAt(t.getLastCommitAt())
+                .prAuthor(t.getPrAuthor())
                 .flags(t.getFlags() != null ? new ArrayList<>(t.getFlags()) : new ArrayList<>())
                 .insight(t.getInsight())
                 .nudge(t.getNudge())
+                .reasoning(t.getReasoning())
                 .rootCause(t.getRootCause())
                 .impact(t.getImpact())
                 .recommendedAction(t.getRecommendedAction())
@@ -122,6 +139,7 @@ public class AgentResultStore {
                 .dataQuality(t.getDataQuality() != null ? t.getDataQuality() : DataQuality.MOCK)
                 .jiraDataAvailable(t.isJiraDataAvailable())
                 .prDataAvailable(t.isPrDataAvailable())
+                .lastNotifiedAt(t.getLastNotifiedAt())
                 .build();
     }
 }

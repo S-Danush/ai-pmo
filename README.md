@@ -1,12 +1,12 @@
 # AI PMO Agent (MVP)
 
-Monorepo with a **Spring Boot** REST backend and an **Angular** dashboard. The agent scores work items for delays (dwell time, PR cycle, status churn), enriches with **Jira** and **GitHub** when configured (otherwise **mock** or **simulated** data), calls **OpenAI** for structured insights, and optionally posts selective alerts to a **Microsoft Teams** incoming webhook.
+Monorepo with a **Spring Boot** REST backend and an **Angular** dashboard. The agent scores work items for delays (dwell time, PR cycle, status churn), enriches with **Jira** and **GitHub** when configured (otherwise **mock** or **simulated** data), calls **Groq** (OpenAI-compatible chat completions) for structured insights, and optionally posts selective alerts to a **Microsoft Teams** incoming webhook.
 
 ## Prerequisites
 
 - **JDK 17+** (set `JAVA_HOME`). This repo includes the **Gradle Wrapper** (`gradlew` / `gradlew.bat`) in [`backend`](backend/); you do not need a global Gradle install.
 - **Node.js 18.19+** (recommended) and **npm** for the frontend.
-- **OpenAI API key** ([OpenAI API keys](https://platform.openai.com/api-keys)).
+- **Groq API key** ([Groq console](https://console.groq.com/keys)); set environment variable `GROQ_API_KEY` or `groq.api.key` in `local-keys.properties`.
 - Optional: **Teams incoming webhook URL** for channel notifications.
 - Optional: **Jira** + **GitHub** — see `application.properties` and `backend/config/local-keys.properties.example`.
 
@@ -20,7 +20,7 @@ Do not commit real keys. Use **one** of these:
    - **Windows (CMD):** `copy local-keys.properties.example local-keys.properties`
    - **PowerShell:** `Copy-Item local-keys.properties.example local-keys.properties`
 2. Edit **`backend/config/local-keys.properties`** and set:
-   - `openai.api.key=sk-...`
+   - `groq.api.key=gsk_...` (or rely on `GROQ_API_KEY` from the environment)
    - `teams.webhook.url=...` (optional)
    - Jira / GitHub keys as documented in the example file
 
@@ -30,25 +30,25 @@ Do not commit real keys. Use **one** of these:
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENAI_API_KEY` | OpenAI API key (maps to `openai.api.key`) |
+| `GROQ_API_KEY` | Groq API key (also set as `groq.api.key` via `application.properties`) |
 | `TEAMS_WEBHOOK_URL` | Teams webhook URL (optional) |
 
 Env vars override values from the local file if both are set.
 
-Default model is `gpt-4o-mini` (change with `openai.model` in `local-keys.properties` or env).
+Default Groq model is `llama-3.3-70b-versatile` (change with `groq.model` in `local-keys.properties` or `application.properties`).
 
-HTTP timeouts for outbound REST (Jira, GitHub, OpenAI) are controlled in [`application.properties`](backend/src/main/resources/application.properties): `http.client.connect-timeout-ms`, `http.client.read-timeout-ms`.
+HTTP timeouts for outbound REST (Jira, GitHub, Groq LLM) are controlled in [`application.properties`](backend/src/main/resources/application.properties): `http.client.connect-timeout-ms`, `http.client.read-timeout-ms`, and `http.client.openai.*` for the LLM client.
 
 ## Run the backend
 
 ```bash
 cd backend
-set OPENAI_API_KEY=your_key_here
+set GROQ_API_KEY=your_key_here
 set TEAMS_WEBHOOK_URL=https://outlook.office.com/webhook/...   # optional
 gradlew.bat bootRun
 ```
 
-(On PowerShell use `$env:OPENAI_API_KEY = "..."`. On macOS/Linux use `./gradlew bootRun` instead of `gradlew.bat`.)
+(On PowerShell use `$env:GROQ_API_KEY = "..."`. On macOS/Linux use `./gradlew bootRun` instead of `gradlew.bat`.)
 
 Other useful tasks: `gradlew.bat build`, `gradlew.bat test`.
 
@@ -88,7 +88,7 @@ The dashboard includes a **“Use simulated demo data”** toggle that passes `s
 ## Flow
 
 1. Open the dashboard — loads `GET /api/insights` (respects simulation toggle).
-2. Click **Run Agent** — `POST /api/run-agent` applies metrics, calls OpenAI for **MEDIUM/HIGH** outliers, sends **Teams** only for **HIGH** or **multiple flags** (with dedupe and cooldown), stores the snapshot for insights.
+2. Click **Run Agent** — `POST /api/run-agent` applies metrics, calls Groq for **MEDIUM/HIGH** outliers, sends **Teams** only for **HIGH** or **multiple flags** (with dedupe and cooldown), stores the snapshot for insights.
 
 ## IDE (Cursor / VS Code) — Java errors on every file
 

@@ -28,6 +28,12 @@ public class Ticket {
     private Instant jiraUpdatedAt;
     /** Jira assignee displayName, or "Unassigned" when none. */
     private String assignee;
+    /** Simulated priority for evaluation dashboards: Low, Medium, High, Critical. */
+    private String priority;
+    /**
+     * Plain-language bottleneck label for grouping (e.g. "Pull request review slow", "No owner assigned").
+     */
+    private String bottleneckCategory;
     /** User-facing status for UI (e.g. "Not Started" instead of "To Do"). */
     private String displayStatus;
     /**
@@ -46,10 +52,18 @@ public class Ticket {
     private int statusChanges = 0;
     @Builder.Default
     private int pingPongTransitions = 0;
+    /**
+     * Simulated: times work moved between Dev and QA. Same cohort metric as {@link #pingPongTransitions} when
+     * loaded from simulation; kept explicit for display.
+     */
+    @Builder.Default
+    private int bounceCount = 0;
     @Builder.Default
     private List<String> flags = new ArrayList<>();
     private String insight;
     private String nudge;
+    /** Multi-signal PMO-style reading; may mirror structured insight reasoning. */
+    private String reasoning;
     private String rootCause;
     private String impact;
     private String recommendedAction;
@@ -80,4 +94,36 @@ public class Ticket {
     private boolean jiraDataAvailable = false;
     @Builder.Default
     private boolean prDataAvailable = false;
+
+    // --- Simulation / portfolio metadata (synthetic dataset; exposed for dashboards & demos) ---
+
+    /**
+     * Short cross-signal notes from metrics (e.g. Jira dwell vs PR vs dependency), for synthesis
+     * and local AI copy.
+     */
+    @Builder.Default
+    private List<String> correlationInsights = new ArrayList<>();
+
+    /** NOT_CREATED, OPEN, IN_REVIEW, MERGED — from synthetic scenario. */
+    private String prStatus;
+    /** NONE, API, DESIGN, EXTERNAL_TEAM. */
+    private String dependency;
+    /** SIMPLE, MEDIUM, COMPLEX — delivery sizing for narratives. */
+    private String complexity;
+
+    // --- Synthetic Git / PR line (demo only; no live GitHub) ---
+
+    /** Pull request number when a PR exists for this scenario. */
+    private Integer prNumber;
+    /** Placeholder GitHub-style PR URL (simulation). */
+    private String prUrl;
+    /** Typical feature branch name for the change. */
+    private String branchName;
+    /** Last commit timestamp on the PR branch (ISO-8601). */
+    private Instant lastCommitAt;
+    /** GitHub login style author for the PR (may differ from Jira assignee). */
+    private String prAuthor;
+
+    /** Set when the user manually sends an update to Teams for this ticket (evaluation / demo). */
+    private Instant lastNotifiedAt;
 }

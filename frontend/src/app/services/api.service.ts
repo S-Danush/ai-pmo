@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -12,12 +12,18 @@ export interface ProjectSummary {
   criticalTickets: number;
   topBottleneck: string;
   status: ProjectStatus;
+  /** HIGH | MEDIUM | LOW — aligned with RED / AMBER / GREEN. */
+  portfolioDeliveryRisk?: string | null;
   prDelayTrendPercent: number | null;
   estimatedDelayDays: number | null;
   /** Run-over-run or baseline narrative */
   trendSummary?: string | null;
   /** Plain-language explanation for RED/AMBER/GREEN */
   reasonForStatus?: string | null;
+  /** Executive narrative with bullet-style lines (newlines). */
+  projectRiskSummary?: string | null;
+  /** Lightweight delivery forecast when many tickets show long dwell. */
+  deliveryInsight?: string | null;
   dataQuality?: DataQuality | null;
   prDataAvailable?: boolean;
   jiraDataAvailable?: boolean;
@@ -35,7 +41,7 @@ export interface ProjectHealth {
 
 export interface Ticket {
   id: string;
-  /** Jira / demo issue title */
+  /** Issue title */
   summary?: string | null;
   status: string;
   statusCategory?: string | null;
@@ -46,14 +52,32 @@ export interface Ticket {
   progressLabel?: string | null;
   flagSummary?: string | null;
   assignee?: string | null;
+  priority?: string | null;
+  bottleneckCategory?: string | null;
   /** Capped hours in current status (backend) */
   timeInState: number;
   prTime: number;
+  /** NOT_CREATED | OPEN | IN_REVIEW | MERGED (simulation) */
+  prStatus?: string | null;
+  /** NONE | API | DESIGN | EXTERNAL_TEAM (simulation) */
+  dependency?: string | null;
+  /** Dev ↔ QA bounce count (simulation) */
+  bounceCount?: number;
+  /** SIMPLE | MEDIUM | COMPLEX (simulation) */
+  complexity?: string | null;
+  /** Synthetic PR number (demo GitHub placeholder) */
+  prNumber?: number | null;
+  /** e.g. https://github.com/demo-org/aipmo-platform/pull/142 */
+  prUrl?: string | null;
+  branchName?: string | null;
+  lastCommitAt?: string | null;
+  prAuthor?: string | null;
   statusChanges?: number;
   pingPongTransitions?: number;
   flags: string[];
   insight?: string | null;
   nudge?: string | null;
+  reasoning?: string | null;
   rootCause?: string | null;
   impact?: string | null;
   recommendedAction?: string | null;
@@ -76,14 +100,45 @@ export interface Ticket {
   lastActivityLabel?: string | null;
   /** UNASSIGNED | BLOCKED | AT_RISK | HEALTHY */
   viewGroup?: string | null;
+  /** ISO timestamp after manual Teams notify */
+  lastNotifiedAt?: string | null;
+}
+
+export interface ManualNotifyResponse {
+  status: string;
+  ticketId: string;
+  assignee: string;
+  messagePreview: string | null;
+  lastNotifiedAt?: string | null;
+  /** Set when status is skipped (e.g. notify cooldown). */
+  reason?: string | null;
+}
+
+export interface TicketSuggestion {
+  ticketId: string;
+  reason: string;
+  recommendedAction: string;
 }
 
 export interface AgentRunResponse {
   tickets: Ticket[];
   projectSummary: ProjectSummary | null;
   projectHealth: ProjectHealth | null;
-  /** True when this snapshot came from simulation mode (SIM-* dataset). */
+  /** Always true — synthetic dataset only. */
   simulation?: boolean;
+  /** ISO-8601 when this snapshot was built. */
+  generatedAt?: string | null;
+}
+
+export interface DeliveryTrendPoint {
+  recordedAt: string;
+  avgPrHours: number;
+  avgDwellHours: number;
+  ticketCount: number;
+}
+
+export interface DeliveryTrend {
+  snapshots: DeliveryTrendPoint[];
 }
 
 @Injectable({
@@ -94,28 +149,31 @@ export class ApiService {
 
   constructor(private readonly http: HttpClient) {}
 
-  getTickets(simulation: boolean): Observable<Ticket[]> {
-    return this.http.get<Ticket[]>(`${this.base}/api/tickets`, {
-      params: this.simParams(simulation),
-    });
+  getTickets(): Observable<Ticket[]> {
+    return this.http.get<Ticket[]>(`${this.base}/api/tickets`);
   }
 
-  runAgent(simulation: boolean): Observable<AgentRunResponse> {
-    return this.http.post<AgentRunResponse>(
-      `${this.base}/api/run-agent`,
-      {},
-      { params: this.simParams(simulation) },
-    );
+  runAgent(): Observable<AgentRunResponse> {
+    return this.http.post<AgentRunResponse>(`${this.base}/api/run-agent`, {});
   }
 
   /** Baseline or last agent snapshot (includes project summary). */
-  getInsights(simulation: boolean): Observable<AgentRunResponse> {
-    return this.http.get<AgentRunResponse>(`${this.base}/api/insights`, {
-      params: this.simParams(simulation),
-    });
+  getInsights(): Observable<AgentRunResponse> {
+    return this.http.get<AgentRunResponse>(`${this.base}/api/insights`);
   }
 
-  private simParams(simulation: boolean): HttpParams {
-    return simulation ? new HttpParams().set('simulation', 'true') : new HttpParams();
+  /** Proactive hints from metrics + severity (no Teams send). */
+  getSuggestions(): Observable<TicketSuggestion[]> {
+    return this.http.get<TicketSuggestion[]>(`${this.base}/api/suggestions`);
+  }
+
+  notifyTicket(ticketId: string): Observable<ManualNotifyResponse> {
+    const enc = encodeURIComponent(ticketId);
+    return this.http.post<ManualNotifyResponse>(`${this.base}/api/notify/${enc}`, {});
+  }
+
+  /** Run-over-run dwell/PR averages (after repeated Run Agent). */
+  getDeliveryTrend(): Observable<DeliveryTrend> {
+    return this.http.get<DeliveryTrend>(`${this.base}/api/delivery-trend`);
   }
 }

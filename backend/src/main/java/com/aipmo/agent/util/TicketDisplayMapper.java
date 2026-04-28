@@ -25,6 +25,15 @@ public final class TicketDisplayMapper {
         if (n.equalsIgnoreCase("In Progress")) {
             return "In Progress";
         }
+        if (n.equalsIgnoreCase("Backlog")) {
+            return "Backlog";
+        }
+        if (n.equalsIgnoreCase("Blocked")) {
+            return "Blocked";
+        }
+        if (n.equalsIgnoreCase("Review")) {
+            return "Review";
+        }
         if (n.equalsIgnoreCase("To Do") || n.equalsIgnoreCase("ToDo") || n.equalsIgnoreCase("Open")) {
             return "Not Started";
         }
@@ -92,6 +101,8 @@ public final class TicketDisplayMapper {
             case MetricsService.FLAG_BOUNCING -> "Status churn";
             case MetricsService.FLAG_TREND_SPIKE -> "Dwell well above team average";
             case MetricsService.FLAG_SLOWDOWN -> "PR merge well above team average";
+            case MetricsService.FLAG_BLOCKED -> "Blocked / dependency";
+            case MetricsService.FLAG_DEPENDENCY_RISK -> "Dependency / wait risk";
             case MetricsService.FLAG_PR_DATA_MISSING, MetricsService.FLAG_DATA_INSUFFICIENT -> null;
             default -> null;
         };

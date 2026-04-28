@@ -22,6 +22,7 @@ public final class FriendlyText {
         String c = rootCause.toLowerCase();
         return c.contains("ai temporarily unavailable")
                 || c.contains("openai api key not configured")
+                || c.contains("groq api key not configured")
                 || c.contains("ssl/tls")
                 || c.contains("jvm truststore");
     }
@@ -37,6 +38,7 @@ public final class FriendlyText {
         String t = s;
         t = t.replaceAll("(?i)AI temporarily unavailable[^.!?\n]*[.!]?", " ");
         t = t.replaceAll("(?i)OpenAI API key not configured[^.!?\n]*[.!]?", " ");
+        t = t.replaceAll("(?i)Groq API key not configured[^.!?\n]*[.!]?", " ");
         t = t.replaceAll("(?i)AI temporarily unavailable:\\s*SSL/[^.!?\n]*[.!]?", " ");
         t = t.replaceAll("\\bPR_DATA_MISSING\\b", "limited PR data");
         t = t.replaceAll("\\bSTUCK\\b", "at risk (slow)");
@@ -45,6 +47,7 @@ public final class FriendlyText {
         t = t.replaceAll("\\bTREND_SPIKE\\b", "higher than peers");
         t = t.replaceAll("\\bBOUNCING\\b", "repeated back-and-forth in status");
         t = t.replaceAll("\\bPR_DELAY\\b", "slow review cycle");
+        t = t.replaceAll("\\bDEPENDENCY_RISK\\b", "long wait with an external dependency");
         t = t.replaceAll("\\bSLOWDOWN\\b", "slower merge time");
         t = hugeHourPattern.matcher(t).replaceAll("a long time in the current state");
         t = anyLargeIntHours.matcher(t).replaceAll("an extended time in the current");

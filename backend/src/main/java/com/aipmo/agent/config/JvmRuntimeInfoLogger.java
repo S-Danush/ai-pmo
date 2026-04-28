@@ -8,7 +8,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * Logs Java runtime details so SSL/JDK issues can be correlated (OpenAI PKIX errors are often JDK
+ * Logs Java runtime details so SSL/JDK issues can be correlated (LLM PKIX errors are often JDK
  * or trust-store related).
  */
 @Component

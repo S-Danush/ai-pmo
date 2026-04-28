@@ -8,9 +8,11 @@ import com.aipmo.agent.model.Ticket;
 import com.aipmo.agent.util.Severity;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -59,6 +61,7 @@ public class ProjectSummaryService {
 
         String topBottleneck = computeTopBottleneck(analyzed);
         ProjectStatus status = computeStatus(analyzed);
+        String portfolioDeliveryRisk = portfolioRiskFromStatus(status);
 
         double batchAvgPr =
                 analyzed.isEmpty()
@@ -96,20 +99,175 @@ public class ProjectSummaryService {
         String reasonForStatus =
                 buildReasonForStatus(status, total, stuck, critical, topBottleneck, prDataAvailable);
 
+        int highPriorityCount = countHighPriority(analyzed);
+        int highPriorityStuckCount = countHighPriorityStuck(analyzed);
+        int prDelayCount = countFlag(analyzed, MetricsService.FLAG_PR_DELAY);
+        int bouncingCount = countFlag(analyzed, MetricsService.FLAG_BOUNCING);
+        int dependencyRiskCount = countFlag(analyzed, MetricsService.FLAG_DEPENDENCY_RISK);
+        String projectRiskSummary =
+                buildProjectRiskSummary(
+                        status,
+                        total,
+                        highPriorityCount,
+                        highPriorityStuckCount,
+                        stuck,
+                        prDelayCount,
+                        bouncingCount,
+                        dependencyRiskCount,
+                        prDataAvailable,
+                        trend);
+        String deliveryInsight = buildDeliveryInsight(analyzed, total);
+
         return ProjectSummaryDto.builder()
                 .totalTickets(total)
                 .stuckTickets(stuck)
                 .criticalTickets(critical)
                 .topBottleneck(topBottleneck)
                 .status(status)
+                .portfolioDeliveryRisk(portfolioDeliveryRisk)
                 .prDelayTrendPercent(trend)
                 .estimatedDelayDays(estDays > 0 ? estDays : null)
                 .trendSummary(trendSummary)
                 .reasonForStatus(reasonForStatus)
+                .projectRiskSummary(projectRiskSummary)
+                .deliveryInsight(deliveryInsight)
                 .dataQuality(dataQuality)
                 .prDataAvailable(prDataAvailable)
                 .jiraDataAvailable(jiraDataAvailable)
                 .build();
+    }
+
+    private static int countHighPriority(List<Ticket> tickets) {
+        return (int) tickets.stream().filter(ProjectSummaryService::isHighOrCriticalPriority).count();
+    }
+
+    private static boolean isHighOrCriticalPriority(Ticket t) {
+        String p = s(t.getPriority());
+        if (p.isEmpty()) {
+            return false;
+        }
+        String pl = p.toLowerCase(Locale.ROOT);
+        return "high".equals(pl) || "critical".equals(pl);
+    }
+
+    private static int countHighPriorityStuck(List<Ticket> tickets) {
+        return (int)
+                tickets.stream()
+                        .filter(
+                                t ->
+                                        isHighOrCriticalPriority(t)
+                                                && t.getFlags() != null
+                                                && (t.getFlags().contains(MetricsService.FLAG_STUCK)
+                                                        || t.getFlags()
+                                                                .contains(
+                                                                        MetricsService
+                                                                                .FLAG_CRITICAL_STUCK)))
+                        .count();
+    }
+
+    private static int countFlag(List<Ticket> tickets, String flag) {
+        return (int)
+                tickets.stream()
+                        .filter(
+                                t ->
+                                        t.getFlags() != null && t.getFlags().contains(flag))
+                        .count();
+    }
+
+    private static String buildProjectRiskSummary(
+            ProjectStatus status,
+            int total,
+            int highPriorityCount,
+            int highPriorityStuckCount,
+            int stuckTickets,
+            int prDelayCount,
+            int bouncingCount,
+            int dependencyRiskCount,
+            boolean prDataAvailable,
+            Double prTrendPercent) {
+        if (total == 0) {
+            return "No tickets in this batch yet — nothing to call out.";
+        }
+        List<String> bullets = new ArrayList<>();
+
+        if (highPriorityStuckCount > 0) {
+            bullets.add(
+                    highPriorityStuckCount == 1
+                            ? "One high-priority ticket looks stuck in place longer than we'd like"
+                            : highPriorityStuckCount
+                                    + " high-priority tickets look stuck in place longer than we'd like");
+        } else if (stuckTickets > 0) {
+            bullets.add(
+                    stuckTickets == 1
+                            ? "One ticket shows unusual dwell in its current state"
+                            : stuckTickets + " tickets show unusual dwell in their current state");
+        }
+
+        if (prDelayCount >= 2) {
+            bullets.add("PR review or merge is running slower than usual across several items");
+        } else if (prDelayCount == 1) {
+            bullets.add("At least one item is waiting longer than peers on review or merge");
+        } else if (prDataAvailable && prTrendPercent != null && prTrendPercent > 12.0) {
+            bullets.add("PR cycle time is trending higher than usual for the batch");
+        }
+
+        if (bouncingCount >= 2) {
+            bullets.add("Several tickets are bouncing between stages — usually a sign handoffs need tightening");
+        } else if (bouncingCount == 1) {
+            bullets.add("A ticket shows status churn that may mean scope or owners aren't quite settled");
+        }
+
+        if (dependencyRiskCount >= 2) {
+            bullets.add(
+                    "Several items have been open a while with an external dependency in the mix — worth naming owners on both sides");
+        } else if (dependencyRiskCount == 1) {
+            bullets.add(
+                    "One ticket has been sitting with an external dependency flagged — easy to misread as “just dev slow”");
+        }
+
+        if (highPriorityStuckCount == 0
+                && stuckTickets == 0
+                && prDelayCount == 0
+                && bouncingCount == 0
+                && highPriorityCount >= 4) {
+            bullets.add(
+                    highPriorityCount
+                            + " tickets are marked high or critical — worth confirming none are quietly waiting");
+        }
+
+        if (bullets.isEmpty()) {
+            return "From this snapshot, nothing is clustering in a worrying way — keep the usual rhythm on reviews and dates.";
+        }
+
+        String leadIn =
+                switch (status) {
+                    case RED ->
+                            "A few things are stacking up in ways that can quietly pull dates if we don't lean in:";
+                    case AMBER ->
+                            "Here's what stands out if you're scanning the portfolio this week:";
+                    default ->
+                            "Overall things look steady; a few spots still deserve a quick leadership read:";
+                };
+
+        StringBuilder sb = new StringBuilder(leadIn.length() + bullets.size() * 80);
+        sb.append(leadIn).append('\n');
+        for (String b : bullets) {
+            sb.append("- ").append(b).append('\n');
+        }
+        return sb.toString().trim();
+    }
+
+    private static String buildDeliveryInsight(List<Ticket> analyzed, int total) {
+        if (total == 0) {
+            return null;
+        }
+        int longDwell =
+                (int) analyzed.stream().filter(t -> t.getTimeInState() >= 48).count();
+        int threshold = Math.max(5, (int) Math.ceil(total * 0.22));
+        if (longDwell >= threshold) {
+            return "Delivery timelines may slip if these are not resolved soon.";
+        }
+        return null;
     }
 
     private static boolean resolvePrDataAvailable(List<Ticket> analyzed, TicketDataLoad dataLoad) {
@@ -224,30 +382,38 @@ public class ProjectSummaryService {
         return switch (status) {
             case RED ->
                     String.format(
-                            "RED: at least one HIGH-severity item or critical dwell (>%dh signals). "
-                                    + "%d of %d tickets appear stuck; %d in critical bands. "
-                                    + "Dominant signal: %s.",
+                            "Right now the board needs air cover — at least one high-severity item or very long "
+                                    + "dwell (>%dh signals). About %d of %d tickets look stuck; %d sit in critical bands. "
+                                    + "The loudest pattern in the flags: %s.",
                             48, stuck, total, critical, topBottleneck);
             case AMBER ->
                     String.format(
-                            "AMBER: elevated delay risk without critical breach — %d stuck, "
-                                    + "%d critical/high, %d tickets reviewed. Most common flag cluster: %s.",
+                            "We're in a watch posture — not a full red flag, but worth attention: %d stuck, "
+                                    + "%d critical/high across %d tickets. Most common flag theme: %s.",
                             stuck, critical, total, topBottleneck);
             case GREEN ->
                     prDataAvailable
                             ? String.format(
-                                    "GREEN: no medium/high severity outliers in this batch (%d tickets). "
-                                            + "Continue monitoring PR and dwell metrics proactively.",
+                                    "Things look steady in this batch (%d tickets) — no medium/high severity "
+                                            + "outliers jumped out. Still worth a light touch on PR and dwell as the week moves.",
                                     total)
                             : String.format(
-                                    "GREEN: no medium/high severity outliers in this batch (%d tickets). "
-                                            + "Continue monitoring dwell metrics proactively.",
+                                    "Things look steady in this batch (%d tickets) — no medium/high severity "
+                                            + "outliers jumped out. Keep an occasional eye on dwell as work lands.",
                                     total);
         };
     }
 
     private static String s(String v) {
         return v == null ? "" : v;
+    }
+
+    private static String portfolioRiskFromStatus(ProjectStatus status) {
+        return switch (status) {
+            case RED -> "HIGH";
+            case AMBER -> "MEDIUM";
+            case GREEN -> "LOW";
+        };
     }
 
     private static ProjectStatus computeStatus(List<Ticket> tickets) {
@@ -270,8 +436,11 @@ public class ProjectSummaryService {
                                 t ->
                                         Severity.MEDIUM.equalsIgnoreCase(s(t.getSeverity()))
                                                 || (t.getFlags() != null
-                                                        && t.getFlags()
-                                                                .contains(MetricsService.FLAG_PR_DELAY)));
+                                                        && (t.getFlags().contains(MetricsService.FLAG_PR_DELAY)
+                                                                || t.getFlags()
+                                                                        .contains(
+                                                                                MetricsService
+                                                                                        .FLAG_DEPENDENCY_RISK))));
         if (amber) {
             return ProjectStatus.AMBER;
         }
@@ -309,6 +478,7 @@ public class ProjectSummaryService {
                         f ->
                                 Objects.equals(f, MetricsService.FLAG_STUCK)
                                         || Objects.equals(f, MetricsService.FLAG_CRITICAL_STUCK)
-                                        || Objects.equals(f, MetricsService.FLAG_PR_DELAY));
+                                        || Objects.equals(f, MetricsService.FLAG_PR_DELAY)
+                                        || Objects.equals(f, MetricsService.FLAG_DEPENDENCY_RISK));
     }
 }

@@ -30,6 +30,13 @@ public class MetricsService {
     public static final String FLAG_SLOWDOWN = "SLOWDOWN";
     public static final String FLAG_PR_DATA_MISSING = "PR_DATA_MISSING";
     public static final String FLAG_DATA_INSUFFICIENT = "DATA_INSUFFICIENT";
+    /** Jira-style blocked column — distinct from metric “stuck” dwell. */
+    public static final String FLAG_BLOCKED = "BLOCKED";
+    /** External dependency (non-NONE) and dwell past priority-based threshold. */
+    public static final String FLAG_DEPENDENCY_RISK = "DEPENDENCY_RISK";
+
+    private static final int DEPENDENCY_RISK_HOURS_HIGH_PRIORITY = 24;
+    private static final int DEPENDENCY_RISK_HOURS_DEFAULT = 48;
 
     public static final String TREND_UP = "UP";
     public static final String TREND_DOWN = "DOWN";
@@ -156,9 +163,20 @@ public class MetricsService {
             flagSet.add(FLAG_BOUNCING);
         }
 
+        if (source.getStatus() != null && "Blocked".equalsIgnoreCase(source.getStatus().trim())) {
+            flagSet.add(FLAG_BLOCKED);
+        }
+
         if (s.dwellComparable() && s.avgTimeInState() > 0 && hours > s.avgTimeInState() * s.anomalyRatio()) {
             flagSet.add(FLAG_TREND_SPIKE);
         }
+
+        if (hasExternalDependency(source.getDependency())
+                && hours > dependencyRiskThresholdHours(source.getPriority())) {
+            flagSet.add(FLAG_DEPENDENCY_RISK);
+        }
+
+        List<String> correlationInsights = buildCorrelationInsights(source, pr, flagSet);
 
         String severity = computeSeverity(flagSet);
         String trendIndicator =
@@ -191,6 +209,8 @@ public class MetricsService {
                         .createdAt(source.getCreatedAt())
                         .jiraUpdatedAt(source.getJiraUpdatedAt())
                         .assignee(source.getAssignee())
+                        .priority(source.getPriority())
+                        .bottleneckCategory(source.getBottleneckCategory())
                         .displayStatus(TicketDisplayMapper.toFriendlyStatus(source.getStatus()))
                         .progressLabel(TicketDisplayMapper.toProgressLabel(hours))
                         .flagSummary(TicketDisplayMapper.toFlagSummary(flagSet))
@@ -198,9 +218,20 @@ public class MetricsService {
                         .prTime(source.getPrTime())
                         .statusChanges(source.getStatusChanges())
                         .pingPongTransitions(source.getPingPongTransitions())
+                        .bounceCount(source.getBounceCount())
+                        .prStatus(source.getPrStatus())
+                        .dependency(source.getDependency())
+                        .correlationInsights(new ArrayList<>(correlationInsights))
+                        .complexity(source.getComplexity())
+                        .prNumber(source.getPrNumber())
+                        .prUrl(source.getPrUrl())
+                        .branchName(source.getBranchName())
+                        .lastCommitAt(source.getLastCommitAt())
+                        .prAuthor(source.getPrAuthor())
                         .flags(new ArrayList<>(flagSet))
                         .insight(source.getInsight())
                         .nudge(source.getNudge())
+                        .reasoning(source.getReasoning())
                         .rootCause(source.getRootCause())
                         .impact(source.getImpact())
                         .recommendedAction(source.getRecommendedAction())
@@ -212,6 +243,7 @@ public class MetricsService {
                                 source.getDataQuality() != null ? source.getDataQuality() : DataQuality.MOCK)
                         .jiraDataAvailable(source.isJiraDataAvailable())
                         .prDataAvailable(source.isPrDataAvailable())
+                        .lastNotifiedAt(source.getLastNotifiedAt())
                         .build();
         return t;
     }
@@ -259,8 +291,19 @@ public class MetricsService {
         boolean slowdown = f.contains(FLAG_SLOWDOWN);
         boolean spike = f.contains(FLAG_TREND_SPIKE);
         boolean bounce = f.contains(FLAG_BOUNCING);
+        boolean blocked = f.contains(FLAG_BLOCKED);
+        boolean depRisk = f.contains(FLAG_DEPENDENCY_RISK);
 
         if (critical) {
+            return Severity.HIGH;
+        }
+        if (depRisk && (stuck || blocked || prDelay || slowdown)) {
+            return Severity.HIGH;
+        }
+        if (blocked && stuck) {
+            return Severity.HIGH;
+        }
+        if (blocked && (prDelay || slowdown)) {
             return Severity.HIGH;
         }
         if (stuck && (prDelay || slowdown)) {
@@ -279,6 +322,9 @@ public class MetricsService {
         if (coreDelay >= 2) {
             return Severity.HIGH;
         }
+        if (blocked) {
+            return Severity.MEDIUM;
+        }
         if (f.size() >= 2) {
             return Severity.MEDIUM;
         }
@@ -288,10 +334,67 @@ public class MetricsService {
         if (spike) {
             return Severity.MEDIUM;
         }
+        if (depRisk) {
+            return Severity.MEDIUM;
+        }
         if (bounce) {
             return Severity.LOW;
         }
         return Severity.LOW;
+    }
+
+    private static boolean hasExternalDependency(String dependency) {
+        if (dependency == null || dependency.isBlank()) {
+            return false;
+        }
+        return !"NONE".equalsIgnoreCase(dependency.trim());
+    }
+
+    private static boolean isHighPriorityForDependency(String priority) {
+        if (priority == null || priority.isBlank()) {
+            return false;
+        }
+        String p = priority.trim();
+        return "High".equalsIgnoreCase(p) || "Critical".equalsIgnoreCase(p);
+    }
+
+    private static int dependencyRiskThresholdHours(String priority) {
+        return isHighPriorityForDependency(priority)
+                ? DEPENDENCY_RISK_HOURS_HIGH_PRIORITY
+                : DEPENDENCY_RISK_HOURS_DEFAULT;
+    }
+
+    /**
+     * Jira “In Progress” (or same category) correlated with missing PR signal.
+     */
+    private static boolean isInProgressWorkflow(Ticket t) {
+        String s = t.getStatus();
+        if (s != null && "In Progress".equalsIgnoreCase(s.trim())) {
+            return true;
+        }
+        String cat = t.getStatusCategory();
+        return cat != null && "In Progress".equalsIgnoreCase(cat.trim());
+    }
+
+    private static List<String> buildCorrelationInsights(Ticket source, int pr, Set<String> flagSet) {
+        List<String> out = new ArrayList<>();
+        boolean blocked =
+                flagSet.contains(FLAG_BLOCKED)
+                        || (source.getStatus() != null && "Blocked".equalsIgnoreCase(source.getStatus().trim()));
+        if (blocked && hasExternalDependency(source.getDependency())) {
+            out.add("External dependency blocking progress.");
+        }
+        if (isInProgressWorkflow(source) && (pr == 0 || !source.isPrDataAvailable())) {
+            out.add("Development may not have started.");
+        }
+        if (flagSet.contains(FLAG_PR_DELAY)) {
+            if (isHighPriorityForDependency(source.getPriority())) {
+                out.add("Critical review bottleneck.");
+            } else {
+                out.add("Code is ready but review is slowing things down.");
+            }
+        }
+        return out;
     }
 
     private static double medianSortedInts(List<Integer> sorted) {

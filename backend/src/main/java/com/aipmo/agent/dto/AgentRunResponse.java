@@ -23,4 +23,7 @@ public class AgentRunResponse {
     /** Matches the {@code simulation} flag used for {@code POST /api/run-agent}. */
     @Builder.Default
     private boolean simulation = false;
+
+    /** ISO-8601 timestamp when this payload was produced (dashboard “Last updated”). */
+    private String generatedAt;
 }

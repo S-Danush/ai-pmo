@@ -16,6 +16,8 @@ public class ProjectSummaryDto {
     private int criticalTickets;
     private String topBottleneck;
     private ProjectStatus status;
+    /** Executive strip: HIGH / MEDIUM / LOW derived from overall {@link #status}. */
+    private String portfolioDeliveryRisk;
     /** vs demo baseline average PR hours (positive = slower). */
     private Double prDelayTrendPercent;
     /** Rough demo estimate from longest dwell past 24h threshold. */
@@ -24,6 +26,13 @@ public class ProjectSummaryDto {
     private String trendSummary;
     /** Plain-language explanation for RED/AMBER/GREEN. */
     private String reasonForStatus;
+    /**
+     * Executive-style narrative: counts of high-priority / stuck / PR delay / churn signals, as short
+     * bullet lines (newlines between lead-in and bullets).
+     */
+    private String projectRiskSummary;
+    /** Lightweight forecast when many tickets show long dwell; null when not triggered. */
+    private String deliveryInsight;
 
     private DataQuality dataQuality;
     private boolean prDataAvailable;

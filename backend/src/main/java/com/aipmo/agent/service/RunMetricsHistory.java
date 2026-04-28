@@ -4,27 +4,41 @@ import com.aipmo.agent.model.Ticket;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * In-memory snapshot from the last completed agent run for run-over-run trend copy. Resets on
- * process restart.
+ * In-memory snapshots from completed agent runs for run-over-run trend copy and dashboard charts.
+ * Resets on process restart.
  */
 @Component
 public class RunMetricsHistory {
 
-    private volatile ProjectSnapshot lastCompletedRun;
+    private static final int MAX_SNAPSHOTS = 8;
+
+    private final Deque<ProjectSnapshot> snapshots = new ArrayDeque<>();
 
     public Optional<ProjectSnapshot> getLastRunSnapshot() {
-        return Optional.ofNullable(lastCompletedRun);
+        ProjectSnapshot last = snapshots.peekLast();
+        return Optional.ofNullable(last);
+    }
+
+    /** Oldest → newest for chart / trend UI. */
+    public List<ProjectSnapshot> getRecentSnapshots() {
+        return new ArrayList<>(snapshots);
     }
 
     public void recordCompletedRun(List<Ticket> analyzed) {
         if (analyzed == null || analyzed.isEmpty()) {
             return;
         }
-        lastCompletedRun = ProjectSnapshot.from(analyzed, Instant.now());
+        snapshots.addLast(ProjectSnapshot.from(analyzed, Instant.now()));
+        while (snapshots.size() > MAX_SNAPSHOTS) {
+            snapshots.removeFirst();
+        }
     }
 
     public record ProjectSnapshot(

@@ -11,6 +11,12 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class TicketInsightPayload {
 
+    /**
+     * Cross-signal narrative (priority, dwell, PR, dependency, flags, churn) before the categorized
+     * root-cause line.
+     */
+    private String reasoning;
+
     private String rootCause;
     private String impact;
     private String recommendedAction;

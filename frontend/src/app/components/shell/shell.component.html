@@ -1,0 +1,90 @@
+<div class="shell" [class.sidebar-collapsed]="dash.sidebarCollapsed()">
+  <header class="top-nav">
+    <div class="nav-left">
+      <button
+        type="button"
+        class="icon-btn sidebar-toggle"
+        (click)="dash.toggleSidebar()"
+        [attr.aria-expanded]="!dash.sidebarCollapsed()"
+        aria-label="Toggle sidebar"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+        </svg>
+      </button>
+      <span class="app-name">AI PMO Agent</span>
+    </div>
+
+    <nav class="nav-center" aria-label="Primary">
+      <button
+        type="button"
+        *ngFor="let tab of tabs"
+        class="nav-tab"
+        [class.active]="dash.activeTab() === tab.id"
+        (click)="selectTab(tab.id)"
+      >
+        {{ tab.label }}
+      </button>
+    </nav>
+
+    <div class="nav-right">
+      <button type="button" class="icon-btn" (click)="toggleTheme()" [attr.aria-label]="theme.mode() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
+        <span class="theme-emoji">{{ theme.mode() === 'dark' ? '☀️' : '🌙' }}</span>
+      </button>
+
+      <div class="notif-wrap">
+        <button type="button" class="icon-btn notif-btn" (click)="toggleNotifDropdown(); $event.stopPropagation()" aria-label="Notifications">
+          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+          </svg>
+          <span class="notif-badge" *ngIf="dash.notificationBellCount() > 0">{{ dash.notificationBellCount() }}</span>
+        </button>
+        <div class="dropdown notif-dropdown" *ngIf="notifOpen" (click)="$event.stopPropagation()">
+          <div class="dropdown-head">Recently notified</div>
+          <ul class="notif-list" *ngIf="dash.notifiedPreview().length; else noNotif">
+            <li *ngFor="let n of dash.notifiedPreview()">
+              <span class="notif-id mono">{{ n.ticketId }}</span>
+              <span class="notif-title">{{ n.title }}</span>
+              <span class="notif-at">{{ n.at ? (n.at | date : 'short') : '—' }}</span>
+            </li>
+          </ul>
+          <ng-template #noNotif>
+            <p class="dropdown-empty">No Teams sends yet. Use Send Update on a ticket.</p>
+          </ng-template>
+        </div>
+      </div>
+
+      <div class="user-wrap">
+        <button type="button" class="avatar-btn" (click)="toggleUserMenu(); $event.stopPropagation()" aria-label="Account menu">
+          <span class="avatar">A</span>
+        </button>
+        <div class="dropdown user-dropdown" *ngIf="userMenuOpen" (click)="$event.stopPropagation()">
+          <div class="user-info">
+            <span class="user-name">admin</span>
+            <span class="user-role">Program lead</span>
+          </div>
+          <button type="button" class="dropdown-action" (click)="logout()">Sign out</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell-body">
+    <aside class="sidebar" aria-label="Workspace">
+      <button
+        type="button"
+        *ngFor="let item of sidebarItems"
+        class="sb-item"
+        [class.active]="dash.sidebarSection() === item.id"
+        (click)="selectSidebar(item.id)"
+      >
+        <span class="sb-icon" aria-hidden="true">{{ item.icon }}</span>
+        <span class="sb-label">{{ item.label }}</span>
+      </button>
+    </aside>
+
+    <main class="main-area">
+      <router-outlet />
+    </main>
+  </div>
+</div>

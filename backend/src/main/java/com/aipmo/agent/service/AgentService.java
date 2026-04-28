@@ -10,16 +10,15 @@ import com.aipmo.agent.dto.TicketInsightPayload;
 import com.aipmo.agent.logging.PipelineMdc;
 import com.aipmo.agent.model.Ticket;
 import com.aipmo.agent.util.DashboardSort;
-import com.aipmo.agent.util.DeliveryRiskCopy;
-import com.aipmo.agent.util.DeliveryViewEnricher;
-import com.aipmo.agent.util.FriendlyText;
+import com.aipmo.agent.util.InsightFormatter;
+import com.aipmo.agent.util.InsightUiFactory;
 import com.aipmo.agent.util.Severity;
-import com.aipmo.agent.util.TicketDisplayMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -31,62 +30,50 @@ public class AgentService {
 
     private final TicketDataService ticketDataService;
     private final MetricsService metricsService;
-    private final AIService aiService;
-    private final NotificationService notificationService;
+    private final LocalAIService localAIService;
     private final AgentResultStore agentResultStore;
     private final ProjectSummaryService projectSummaryService;
     private final AiAnalysisCache aiAnalysisCache;
     private final RunMetricsHistory runMetricsHistory;
-    private final TeamsDedupStore teamsDedupStore;
     private final EscalationTracker escalationTracker;
+    private final NotifyStateStore notifyStateStore;
 
     public AgentService(
             TicketDataService ticketDataService,
             MetricsService metricsService,
-            AIService aiService,
-            NotificationService notificationService,
+            LocalAIService localAIService,
             AgentResultStore agentResultStore,
             ProjectSummaryService projectSummaryService,
             AiAnalysisCache aiAnalysisCache,
             RunMetricsHistory runMetricsHistory,
-            TeamsDedupStore teamsDedupStore,
-            EscalationTracker escalationTracker) {
+            EscalationTracker escalationTracker,
+            NotifyStateStore notifyStateStore) {
         this.ticketDataService = ticketDataService;
         this.metricsService = metricsService;
-        this.aiService = aiService;
-        this.notificationService = notificationService;
+        this.localAIService = localAIService;
         this.agentResultStore = agentResultStore;
         this.projectSummaryService = projectSummaryService;
         this.aiAnalysisCache = aiAnalysisCache;
         this.runMetricsHistory = runMetricsHistory;
-        this.teamsDedupStore = teamsDedupStore;
         this.escalationTracker = escalationTracker;
+        this.notifyStateStore = notifyStateStore;
     }
 
     public AgentRunResponse runAgent() {
-        return runAgent(false);
-    }
-
-    public AgentRunResponse runAgent(boolean simulation) {
         long runT0 = System.currentTimeMillis();
         boolean addedRequestId = ensureRequestIdForStandaloneCall();
 
         try {
             PipelineMdc.stageAndAction(PipelineMdc.STAGE_PIPELINE, PipelineMdc.ACTION_START);
-            log.info("Agent run started simulation={}", simulation);
+            log.info("Agent run started (simulation-only)");
 
-            AgentRunResponse prevRun = agentResultStore.getLastRun(simulation);
+            AgentRunResponse prevRun = agentResultStore.getLastRun();
 
-            PipelineMdc.stageAndAction(PipelineMdc.STAGE_DATA_FETCH, PipelineMdc.ACTION_JIRA_GITHUB);
-            if (simulation) {
-                PipelineMdc.action(PipelineMdc.ACTION_SIMULATION);
-            }
-            log.info(
-                    simulation
-                            ? "Fetching tickets (simulation dataset)"
-                            : "Fetching tickets from Jira/GitHub");
+            PipelineMdc.stageAndAction(PipelineMdc.STAGE_DATA_FETCH, PipelineMdc.ACTION_SIMULATION);
+            PipelineMdc.action(PipelineMdc.ACTION_SIMULATION);
+            log.info("Loading synthetic ticket dataset");
 
-            TicketDataLoad dataLoad = ticketDataService.loadTicketData(simulation);
+            TicketDataLoad dataLoad = ticketDataService.loadTicketData();
             List<Ticket> rawTickets = dataLoad.tickets();
             log.info(
                     "Fetched ticketCount={} path={}",
@@ -138,39 +125,25 @@ public class AgentService {
                 } else {
                     log.info("Generating AI insight for ticketId={}", ticket.getId());
                     long insightT0 = System.currentTimeMillis();
-                    insightOutcome = aiService.generateStructuredInsight(ticket);
+                    insightOutcome = localAIService.generateStructuredInsight(ticket);
                     long insightMs = System.currentTimeMillis() - insightT0;
                     insight = insightOutcome.insight();
-                    if (insightOutcome.usedOpenAiModel()) {
-                        log.info(
-                                "Insight generated successfully ticketId={} cached=false insightMs={} status=SUCCESS",
-                                ticket.getId(),
-                                insightMs);
-                    } else if (!insightOutcome.openAiAttempted()) {
-                        log.warn(
-                                "Insight used metric-only fallback (OpenAI not configured) ticketId={} insightMs={} status=FAILED dependency=CONFIG",
-                                ticket.getId(),
-                                insightMs);
-                    } else {
-                        log.error(
-                                "Insight NOT generated from OpenAI ticketId={} insightMs={} status=FAILED transportFailure={}",
-                                ticket.getId(),
-                                insightMs,
-                                insightOutcome.transportFailure());
-                    }
+                    log.info(
+                            "Insight generated (local engine) ticketId={} cached=false insightMs={} status=SUCCESS",
+                            ticket.getId(),
+                            insightMs);
 
                     aiAnalysisCache.put(cacheKey, insight);
                 }
 
-                boolean aiLimited = isAiInsightLimited(insight, insightOutcome);
-                TicketInsightPayload forUi = buildUiInsight(ticket, insight, aiLimited);
+                boolean aiLimited = InsightUiFactory.isAiInsightLimited(insight, insightOutcome);
+                TicketInsightPayload forUi = InsightUiFactory.buildUiInsight(ticket, insight, aiLimited);
                 String nudge = forUi.getNudge() != null ? forUi.getNudge() : "";
-                String insightText = AIService.formatInsightText(forUi);
-                int escalation =
-                        escalationTracker.recordAndGetLevel(
-                                ticket.getId(),
-                                Severity.HIGH.equalsIgnoreCase(ticket.getSeverity()),
-                                prevRun);
+                String insightText = InsightFormatter.formatInsightText(forUi);
+                escalationTracker.recordAndGetLevel(
+                        ticket.getId(),
+                        Severity.HIGH.equalsIgnoreCase(ticket.getSeverity()),
+                        prevRun);
                 Ticket updated =
                         Ticket.builder()
                                 .id(ticket.getId())
@@ -185,6 +158,8 @@ public class AgentService {
                                 .flagSummary(ticket.getFlagSummary())
                                 .agingBucket(ticket.getAgingBucket())
                                 .deliveryRisk(ticket.getDeliveryRisk())
+                                .priority(ticket.getPriority())
+                                .bottleneckCategory(ticket.getBottleneckCategory())
                                 .movementStatus(ticket.getMovementStatus())
                                 .viewGroup(ticket.getViewGroup())
                                 .timeInStatusLabel(ticket.getTimeInStatusLabel())
@@ -193,9 +168,23 @@ public class AgentService {
                                 .prTime(ticket.getPrTime())
                                 .statusChanges(ticket.getStatusChanges())
                                 .pingPongTransitions(ticket.getPingPongTransitions())
+                                .bounceCount(ticket.getBounceCount())
+                                .prStatus(ticket.getPrStatus())
+                                .dependency(ticket.getDependency())
+                                .correlationInsights(
+                                        ticket.getCorrelationInsights() != null
+                                                ? new ArrayList<>(ticket.getCorrelationInsights())
+                                                : new ArrayList<>())
+                                .complexity(ticket.getComplexity())
+                                .prNumber(ticket.getPrNumber())
+                                .prUrl(ticket.getPrUrl())
+                                .branchName(ticket.getBranchName())
+                                .lastCommitAt(ticket.getLastCommitAt())
+                                .prAuthor(ticket.getPrAuthor())
                                 .flags(new ArrayList<>(ticket.getFlags()))
                                 .insight(insightText)
                                 .nudge(nudge)
+                                .reasoning(forUi.getReasoning())
                                 .rootCause(forUi.getRootCause())
                                 .impact(forUi.getImpact())
                                 .recommendedAction(forUi.getRecommendedAction())
@@ -211,30 +200,24 @@ public class AgentService {
                                 .prDataAvailable(ticket.isPrDataAvailable())
                                 .build();
                 enriched.add(updated);
-
-                if (shouldSendTeamsAlert(updated) && teamsDedupStore.shouldSend(updated.getId())) {
-                    log.info("Sending Teams notification for ticketId={}", updated.getId());
-                    dispatchDeliveryRiskTeams(updated, forUi, aiLimited, escalation);
-                    teamsDedupStore.markSent(updated.getId());
-                } else if (shouldSendTeamsAlert(updated)) {
-                    log.info("Teams alert skipped (dedup cooldown) ticketId={}", updated.getId());
-                }
             }
 
             PipelineMdc.stageAndAction(PipelineMdc.STAGE_SUMMARY, PipelineMdc.ACTION_PROJECT_SUMMARY);
             log.info("Project summary generated: {}", summary.getStatus());
 
             DashboardSort.sortForManager(enriched);
-            ProjectHealthDto health = ProjectHealthDto.from(enriched);
+            List<Ticket> mergedNotify = notifyStateStore.mergeAll(enriched);
+            ProjectHealthDto health = ProjectHealthDto.from(mergedNotify);
 
             AgentRunResponse response =
                     AgentRunResponse.builder()
-                            .tickets(enriched)
+                            .tickets(mergedNotify)
                             .projectSummary(summary)
                             .projectHealth(health)
-                            .simulation(simulation)
+                            .simulation(true)
+                            .generatedAt(Instant.now().toString())
                             .build();
-            agentResultStore.setLastRun(response, simulation);
+            agentResultStore.setLastRun(response);
             runMetricsHistory.recordCompletedRun(analyzed);
 
             long totalMs = System.currentTimeMillis() - runT0;
@@ -242,7 +225,7 @@ public class AgentService {
             log.info(
                     "Agent run completed in {} ms ticketCount={} outliersProcessed={}",
                     totalMs,
-                    enriched.size(),
+                    mergedNotify.size(),
                     aiOutliersProcessed);
             return response;
         } finally {
@@ -272,114 +255,6 @@ public class AgentService {
         return n;
     }
 
-    private static boolean shouldSendTeamsAlert(Ticket ticket) {
-        if (Severity.HIGH.equalsIgnoreCase(ticket.getSeverity())) {
-            return true;
-        }
-        return ticket.getFlags() != null && ticket.getFlags().size() >= 2;
-    }
-
-    /**
-     * True when the live model did not produce the insight (config, transport, or cache of such a
-     * result).
-     */
-    private static boolean isAiInsightLimited(
-            TicketInsightPayload insight, AiInsightOutcome outcome) {
-        if (outcome != null) {
-            return !outcome.usedOpenAiModel();
-        }
-        return FriendlyText.looksLikeMetricFallback(insight.getRootCause());
-    }
-
-    /** Replaces raw model/fallback text with one human-readable payload for UI + Teams. */
-    private static TicketInsightPayload buildUiInsight(
-            Ticket ticket, TicketInsightPayload raw, boolean aiLimited) {
-        if (aiLimited) {
-            return TicketInsightPayload.builder()
-                    .rootCause(DeliveryRiskCopy.DEFAULT_ISSUE)
-                    .impact(DeliveryRiskCopy.DEFAULT_IMPACT)
-                    .recommendedAction(DeliveryRiskCopy.DEFAULT_ACTION)
-                    .nudge(DeliveryRiskCopy.DEFAULT_SUGGESTION)
-                    .confidence("—")
-                    .build();
-        }
-        String timePhrase = TicketDisplayMapper.toTimeInStateNarrative(ticket.getTimeInState());
-        String rc = stringOrNull(FriendlyText.sanitizeForReader(raw.getRootCause()));
-        if (rc == null || rc.isBlank()) {
-            rc = DeliveryRiskCopy.issueTiedToTiming(timePhrase);
-        }
-        String im = stringOrNull(FriendlyText.sanitizeForReader(raw.getImpact()));
-        if (im == null || im.isBlank()) {
-            im = DeliveryRiskCopy.DEFAULT_IMPACT;
-        }
-        String ra = stringOrNull(FriendlyText.sanitizeForReader(raw.getRecommendedAction()));
-        String nud = stringOrNull(FriendlyText.sanitizeForReader(raw.getNudge()));
-        if (ra == null || ra.isBlank()) {
-            ra = nud != null && !nud.isBlank()
-                    ? nud
-                    : "Check current status, confirm the owner, and move forward or unblock.";
-        }
-        if (nud == null || nud.isBlank()) {
-            nud = DeliveryRiskCopy.DEFAULT_SUGGESTION;
-        }
-        String conf = raw.getConfidence() != null && !raw.getConfidence().isBlank()
-                ? raw.getConfidence()
-                : "MEDIUM";
-        return TicketInsightPayload.builder()
-                .rootCause(rc)
-                .impact(im)
-                .recommendedAction(ra)
-                .nudge(nud)
-                .confidence(conf)
-                .build();
-    }
-
-    private static String stringOrNull(String s) {
-        if (s == null || s.isBlank()) {
-            return null;
-        }
-        return s;
-    }
-
-    private void dispatchDeliveryRiskTeams(
-            Ticket ticket,
-            TicketInsightPayload forUi,
-            boolean aiLimited,
-            int escalation) {
-        String friendlyStatus =
-                ticket.getDisplayStatus() != null
-                        ? ticket.getDisplayStatus()
-                        : TicketDisplayMapper.toFriendlyStatus(ticket.getStatus());
-        String problem = buildTeamsProblem(ticket, forUi, aiLimited, escalation);
-        String suggested =
-                (forUi.getRecommendedAction() != null && !forUi.getRecommendedAction().isBlank())
-                        ? forUi.getRecommendedAction()
-                        : DeliveryRiskCopy.SIMPLE_SUGGESTED_ACTION;
-        if (suggested.length() < 20) {
-            suggested = DeliveryRiskCopy.SIMPLE_SUGGESTED_ACTION;
-        }
-        String foot = aiLimited ? DeliveryRiskCopy.AI_LIMITED_NOTE : null;
-        notificationService.sendManagerIssueAlert(ticket, friendlyStatus, problem, suggested, foot);
-    }
-
-    private static String buildTeamsProblem(
-            Ticket ticket, TicketInsightPayload forUi, boolean aiLimited, int escalation) {
-        if (aiLimited) {
-            if (DeliveryViewEnricher.MOVEMENT_NO_ACTIVITY.equals(ticket.getMovementStatus())) {
-                return "This issue has not been updated in a while and may be stuck.";
-            }
-            return "This work item may need a quick check-in with the team.";
-        }
-        String p = forUi.getRootCause() != null ? forUi.getRootCause() : "Progress may be slower than expected.";
-        if (p.length() > 400) {
-            p = p.substring(0, 397) + "...";
-        }
-        if (escalation >= 2) {
-            return "This item stayed in a risky state for multiple runs. " + p;
-        }
-        return p;
-    }
-
     private static boolean isOutlier(Ticket ticket) {
         String s = ticket.getSeverity();
         return Severity.HIGH.equalsIgnoreCase(s) || Severity.MEDIUM.equalsIgnoreCase(s);
@@ -399,6 +274,8 @@ public class AgentService {
                 .flagSummary(ticket.getFlagSummary())
                 .agingBucket(ticket.getAgingBucket())
                 .deliveryRisk(ticket.getDeliveryRisk())
+                .priority(ticket.getPriority())
+                .bottleneckCategory(ticket.getBottleneckCategory())
                 .movementStatus(ticket.getMovementStatus())
                 .viewGroup(ticket.getViewGroup())
                 .timeInStatusLabel(ticket.getTimeInStatusLabel())
@@ -407,6 +284,19 @@ public class AgentService {
                 .prTime(ticket.getPrTime())
                 .statusChanges(ticket.getStatusChanges())
                 .pingPongTransitions(ticket.getPingPongTransitions())
+                .bounceCount(ticket.getBounceCount())
+                .prStatus(ticket.getPrStatus())
+                .dependency(ticket.getDependency())
+                .correlationInsights(
+                        ticket.getCorrelationInsights() != null
+                                ? new ArrayList<>(ticket.getCorrelationInsights())
+                                : new ArrayList<>())
+                .complexity(ticket.getComplexity())
+                .prNumber(ticket.getPrNumber())
+                .prUrl(ticket.getPrUrl())
+                .branchName(ticket.getBranchName())
+                .lastCommitAt(ticket.getLastCommitAt())
+                .prAuthor(ticket.getPrAuthor())
                 .flags(ticket.getFlags() != null ? new ArrayList<>(ticket.getFlags()) : new ArrayList<>())
                 .severity(ticket.getSeverity())
                 .trendIndicator(ticket.getTrendIndicator())
