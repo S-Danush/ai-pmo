@@ -1,0 +1,191 @@
+<div class="ta-page">
+  <header class="ta-head">
+    <div>
+      <h1>Team</h1>
+      <p class="ta-sub">Squad workload, commits, and capacity signals.</p>
+    </div>
+    <button type="button" class="ta-refresh" (click)="load()" [disabled]="loading">Refresh</button>
+  </header>
+
+  <p class="ta-err" *ngIf="error">{{ error }}</p>
+
+  <div class="ta-skel" *ngIf="loading && !data">
+    <div class="skel kpi"></div>
+    <div class="skel kpi"></div>
+    <div class="skel kpi"></div>
+  </div>
+
+  <ng-container *ngIf="data as d">
+    <section class="ta-kpis" aria-label="Team overview">
+      <article class="kpi-card">
+        <span class="kpi-label">Total team members</span>
+        <span class="kpi-val">{{ d.overview.totalTeamMembers }}</span>
+      </article>
+      <article class="kpi-card">
+        <span class="kpi-label">Active tickets</span>
+        <span class="kpi-val">{{ d.overview.totalActiveTickets }}</span>
+      </article>
+      <article class="kpi-card">
+        <span class="kpi-label">Completed</span>
+        <span class="kpi-val">{{ d.overview.completedTickets }}</span>
+      </article>
+      <article class="kpi-card">
+        <span class="kpi-label">Under review</span>
+        <span class="kpi-val">{{ d.overview.ticketsUnderReview }}</span>
+      </article>
+      <article class="kpi-card">
+        <span class="kpi-label">Avg tickets / developer</span>
+        <span class="kpi-val">{{ d.overview.avgTicketsPerDeveloper | number : '1.0-2' }}</span>
+      </article>
+    </section>
+
+    <section class="ta-filters" aria-label="Filters">
+      <label class="filt">
+        <span>Assignee</span>
+        <input
+          type="text"
+          class="filt-input"
+          [(ngModel)]="filterAssignee"
+          placeholder="Type partial name…"
+          [attr.list]="'ta-assignee-list'"
+        />
+        <datalist id="ta-assignee-list">
+          <option *ngFor="let n of assigneeOptions()" [value]="n"></option>
+        </datalist>
+      </label>
+      <label class="filt">
+        <span>Performance</span>
+        <select class="filt-input" [(ngModel)]="filterPerformance">
+          <option value="all">All</option>
+          <option value="OVERLOADED">Overloaded</option>
+          <option value="BALANCED">Balanced</option>
+          <option value="UNDERUTILIZED">Underutilized</option>
+        </select>
+      </label>
+      <label class="filt">
+        <span>Workload</span>
+        <select class="filt-input" [(ngModel)]="filterWorkload">
+          <option value="all">All</option>
+          <option value="OVERLOADED">Overloaded</option>
+          <option value="UNDERUTILIZED">Underutilized</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="ta-members" aria-label="Team members">
+      <h2>Individual contributors</h2>
+      <div class="member-grid">
+        <article class="member-card" *ngFor="let m of filteredMembers()">
+          <div class="member-top">
+            <div
+              class="avatar"
+              [style.background]="'linear-gradient(135deg, hsl(' + m.avatarHue + ',55%,42%), hsl(' + (m.avatarHue + 40) + ',60%,35%))'"
+            >
+              {{ initials(m.name) }}
+            </div>
+            <div class="member-meta">
+              <h3>{{ m.name }}</h3>
+              <p class="member-exp" *ngIf="m.experience">{{ m.experience }}</p>
+              <span class="perf-pill" [ngClass]="perfClass(m.performanceLevel)">
+                <ng-container [ngSwitch]="m.performanceLevel">
+                  <span *ngSwitchCase="'OVERLOADED'">{{ m.performanceLabel }}</span>
+                  <span *ngSwitchCase="'UNDERUTILIZED'">{{ m.performanceLabel }}</span>
+                  <span *ngSwitchCase="'BALANCED'">{{ m.performanceLabel }}</span>
+                  <span *ngSwitchDefault>{{ m.performanceLabel }}</span>
+                </ng-container>
+              </span>
+            </div>
+          </div>
+          <div class="member-spark" *ngIf="gitFor(m.name) as g">
+            <div class="spark-row">
+              <span class="spark-label">Commits / week</span>
+              <div class="spark-track">
+                <div class="spark-fill" [style.width.%]="(g.commitsPerWeek / maxCommitsWeek()) * 100"></div>
+              </div>
+              <span class="spark-num">{{ g.commitsPerWeek | number : '1.0-1' }}</span>
+            </div>
+            <div class="spark-row">
+              <span class="spark-label">Avg review time</span>
+              <span class="spark-num">{{ g.avgPrReviewTimeHours | number : '1.0-1' }}h</span>
+            </div>
+          </div>
+          <dl class="member-stats">
+            <div><dt>Assigned</dt><dd>{{ m.totalTicketsAssigned }}</dd></div>
+            <div><dt>Done</dt><dd>{{ m.completedTickets }}</dd></div>
+            <div><dt>In progress</dt><dd>{{ m.inProgress }}</dd></div>
+            <div><dt>Review</dt><dd>{{ m.underReview }}</dd></div>
+            <div><dt>Blocked</dt><dd>{{ m.blocked }}</dd></div>
+          </dl>
+          <p class="ai-line">{{ m.aiInsight }}</p>
+        </article>
+      </div>
+      <p class="ta-empty" *ngIf="!filteredMembers().length">No members match the current filters.</p>
+    </section>
+
+    <section class="ta-charts" aria-label="Git activity">
+      <div class="chart-card chart-card-wide">
+        <div class="chart-head">
+          <h2>Commits per contributor</h2>
+          <label class="filt chart-period">
+            <span>View</span>
+            <select class="filt-input filt-input-sm" [(ngModel)]="commitBarPeriod">
+              <option value="day">Per day</option>
+              <option value="week">Per week</option>
+              <option value="month">Per month</option>
+            </select>
+          </label>
+        </div>
+        <p class="chart-hint">{{ commitsBarPeriodLabel() }}</p>
+        <div class="bar-row" *ngFor="let g of d.gitActivityByMember">
+          <span class="bar-name">{{ g.assigneeName }}</span>
+          <div class="bar-track">
+            <div class="bar-fill" [style.width.%]="(commitsBarValue(g) / maxCommitsBar()) * 100"></div>
+          </div>
+          <span class="bar-num">{{ commitsBarValue(g) | number : '1.0-2' }}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="ta-workload" aria-label="Workload distribution">
+      <h2>Active tickets by assignee</h2>
+      <p class="wl-hint">Highlighted bars: overloaded vs underutilized vs peers.</p>
+      <div class="bar-row" *ngFor="let w of d.workloadByAssignee" [ngClass]="highlightClass(w.highlight)">
+        <span class="bar-name">{{ w.assigneeName }}</span>
+        <div class="bar-track">
+          <div class="bar-fill wl" [style.width.%]="(w.activeTicketCount / maxWorkload()) * 100"></div>
+        </div>
+        <span class="bar-num">{{ w.activeTicketCount }}</span>
+      </div>
+    </section>
+
+    <section class="ta-git-table" *ngIf="d.gitActivityByMember.length">
+      <h2>Activity metrics</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Commits / day</th>
+              <th>Commits / week</th>
+              <th>Commits / month</th>
+              <th>PRs opened</th>
+              <th>PRs merged</th>
+              <th>Avg review (h)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let g of d.gitActivityByMember">
+              <td>{{ g.assigneeName }}</td>
+              <td>{{ g.commitsPerDay | number : '1.0-2' }}</td>
+              <td>{{ g.commitsPerWeek | number : '1.0-2' }}</td>
+              <td>{{ g.commitsPerMonth | number : '1.0-2' }}</td>
+              <td>{{ g.prsCreated }}</td>
+              <td>{{ g.prsMerged }}</td>
+              <td>{{ g.avgPrReviewTimeHours | number : '1.0-1' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </ng-container>
+</div>

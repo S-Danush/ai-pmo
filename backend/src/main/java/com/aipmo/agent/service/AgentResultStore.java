@@ -2,6 +2,7 @@ package com.aipmo.agent.service;
 
 import com.aipmo.agent.dto.AgentRunResponse;
 import com.aipmo.agent.dto.DataQuality;
+import com.aipmo.agent.dto.RootCauseDto;
 import com.aipmo.agent.dto.ProjectHealthDto;
 import com.aipmo.agent.dto.ProjectSummaryDto;
 import com.aipmo.agent.model.Ticket;
@@ -27,6 +28,11 @@ public class AgentResultStore {
 
     public AgentRunResponse getLastRun() {
         return lastRun.get();
+    }
+
+    /** Clears cached agent output (e.g. after switching simulation scenario). */
+    public void clearLastRun() {
+        lastRun.set(null);
     }
 
     private static AgentRunResponse copyResponse(AgentRunResponse in) {
@@ -125,6 +131,19 @@ public class AgentResultStore {
                 .branchName(t.getBranchName())
                 .lastCommitAt(t.getLastCommitAt())
                 .prAuthor(t.getPrAuthor())
+                .commitMessages(
+                        t.getCommitMessages() != null
+                                ? new ArrayList<>(t.getCommitMessages())
+                                : new ArrayList<>())
+                .prTitle(t.getPrTitle())
+                .prLink(t.getPrLink())
+                .commitCount(t.getCommitCount())
+                .deploymentTag(t.getDeploymentTag())
+                .deployed(t.isDeployed())
+                .deployedAt(t.getDeployedAt())
+                .deployEnvironment(t.getDeployEnvironment())
+                .prAgeHours(t.getPrAgeHours())
+                .reviewerDelayHours(t.getReviewerDelayHours())
                 .flags(t.getFlags() != null ? new ArrayList<>(t.getFlags()) : new ArrayList<>())
                 .insight(t.getInsight())
                 .nudge(t.getNudge())
@@ -132,6 +151,12 @@ public class AgentResultStore {
                 .rootCause(t.getRootCause())
                 .impact(t.getImpact())
                 .recommendedAction(t.getRecommendedAction())
+                .actionOwner(t.getActionOwner())
+                .rootCauseAnalysis(t.getRootCauseAnalysis())
+                .explainabilityFactors(
+                        t.getExplainabilityFactors() != null
+                                ? new ArrayList<>(t.getExplainabilityFactors())
+                                : new ArrayList<>())
                 .severity(t.getSeverity())
                 .trendIndicator(t.getTrendIndicator())
                 .confidence(t.getConfidence())

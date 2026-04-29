@@ -1,0 +1,172 @@
+<div class="agent-layout" [class.agent-layout--history-collapsed]="historyCollapsed">
+  <aside
+    class="chat-sessions"
+    [class.chat-sessions--collapsed]="historyCollapsed"
+    [attr.aria-hidden]="historyCollapsed"
+  >
+    <div class="chat-sessions-inner">
+      <div class="chat-sessions-header">
+        <span class="chat-sessions-heading">Conversations</span>
+        <button
+          type="button"
+          class="chat-sessions-collapse"
+          (click)="toggleHistoryCollapsed()"
+          aria-label="Hide conversation list"
+          title="Collapse sidebar"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M15 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      </div>
+
+      <button type="button" class="chat-sessions-new" (click)="newChat()">
+        <span class="chat-sessions-new-icon" aria-hidden="true">+</span>
+        New chat
+      </button>
+
+      <div class="chat-sessions-scroll">
+        <button
+          type="button"
+          class="chat-session-row"
+          *ngFor="let s of chatSessions"
+          [class.chat-session-row--active]="s.sessionId === currentSessionId"
+          (click)="selectSession(s.sessionId)"
+        >
+          <span class="chat-session-title">{{ s.title || 'Chat' }}</span>
+          <span class="chat-session-meta" *ngIf="s.updatedAt">{{ s.updatedAt | date : 'MMM d' }}</span>
+        </button>
+        <p class="chat-sessions-empty" *ngIf="!sessionLoading && chatSessions.length === 0">No conversations yet.</p>
+      </div>
+    </div>
+  </aside>
+
+  <div class="gemini-chat-stack">
+    <header class="gemini-topbar">
+      <button
+        *ngIf="historyCollapsed"
+        type="button"
+        class="gemini-topbar-reopen"
+        (click)="toggleHistoryCollapsed()"
+        aria-label="Show conversation list"
+        title="Show conversations"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <rect x="3" y="4" width="8" height="16" rx="1.5" />
+          <rect x="13" y="4" width="8" height="10" rx="1.5" />
+        </svg>
+        <span>Chats</span>
+      </button>
+      <div class="gemini-topbar-center">
+        <h2 class="gemini-topbar-title">PMO Assistant</h2>
+        <p class="gemini-topbar-sub">
+          {{ sessionLoading ? 'Loading conversations…' : 'Live portfolio · same snapshot as your dashboard' }}
+        </p>
+      </div>
+    </header>
+
+    <div class="gemini-chat">
+      <div class="gemini-stage" *ngIf="!sessionLoading; else loadingTpl">
+        <div class="gemini-scroll" #scrollArea>
+          <div class="gemini-scroll-inner">
+            <div
+              *ngFor="let m of messages"
+              class="gemini-msg"
+              [class.gemini-msg--user]="m.role === 'user'"
+              [class.gemini-msg--ai]="m.role === 'assistant'"
+            >
+              <div class="gemini-avatar gemini-avatar--ai" *ngIf="m.role === 'assistant'" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M12 3l1.76 5.45h5.7l-4.61 3.35 1.76 5.42L12 15.77 7.39 17.22l1.76-5.42L4.54 8.45h5.7L12 3z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </div>
+              <div class="gemini-msg-col" [class.gemini-msg-col--user]="m.role === 'user'">
+                <div class="gemini-bubble" [class.gemini-bubble--assistant]="m.role === 'assistant'" [class.gemini-bubble--user]="m.role === 'user'">
+                  <ng-container *ngIf="m.role === 'user'">
+                    <p class="gemini-plain">{{ m.plain }}</p>
+                  </ng-container>
+                  <ng-container *ngIf="m.role === 'assistant'">
+                    <div class="gemini-rich" [innerHTML]="m.html"></div>
+                    <ul class="gemini-bullets" *ngIf="m.bullets.length">
+                      <li *ngFor="let b of m.bullets">{{ b }}</li>
+                    </ul>
+                    <div class="gemini-ids" *ngIf="m.ticketIds.length">
+                      <span class="gemini-id-chip" *ngFor="let id of m.ticketIds">{{ id }}</span>
+                    </div>
+                  </ng-container>
+                </div>
+                <span class="gemini-ts" *ngIf="m.sentAt">{{ m.sentAt | date : 'short' }}</span>
+              </div>
+            </div>
+
+            <div class="gemini-typing" *ngIf="sending">
+              <div class="gemini-avatar gemini-avatar--ai gemini-avatar--pulse" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M12 3l1.76 5.45h5.7l-4.61 3.35 1.76 5.42L12 15.77 7.39 17.22l1.76-5.42L4.54 8.45h5.7L12 3z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </div>
+              <div class="gemini-typing-bubble" aria-live="polite">
+                <span class="gemini-typing-label">Thinking</span>
+                <div class="gemini-typing-dots">
+                  <span class="gemini-dot"></span><span class="gemini-dot"></span><span class="gemini-dot"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="quick-prompts" *ngIf="showStarterSuggestions()">
+              <p class="quick-prompts-label">Suggested prompts</p>
+              <div class="quick-prompts-grid">
+                <button type="button" class="quick-prompt-chip" *ngFor="let p of starterPrompts" (click)="applyStarterPrompt(p)">
+                  {{ p }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gemini-footer">
+          <p class="gemini-err" *ngIf="error">{{ error }}</p>
+
+          <form class="gemini-composer" (ngSubmit)="send()">
+            <div class="gemini-composer-inner">
+              <div class="gemini-composer-box">
+                <input
+                  type="text"
+                  class="gemini-input"
+                  [(ngModel)]="input"
+                  name="q"
+                  placeholder="Ask about tickets, assignees, blockers, workload, or delivery risk"
+                  autocomplete="off"
+                  [disabled]="sending || !currentSessionId"
+                />
+                <button
+                  type="submit"
+                  class="gemini-send"
+                  [disabled]="sending || !input.trim() || !currentSessionId"
+                  aria-label="Send"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <ng-template #loadingTpl>
+        <div class="gemini-loading">
+          <div class="gemini-loading-spinner" aria-hidden="true"></div>
+          <p>Loading conversations…</p>
+        </div>
+      </ng-template>
+    </div>
+  </div>
+</div>

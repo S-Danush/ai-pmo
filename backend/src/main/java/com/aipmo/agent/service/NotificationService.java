@@ -32,16 +32,16 @@ public class NotificationService {
     private static final int MAX_BUFFER = 200;
 
     private final RestTemplate restTemplate;
-    private final LocalAIService localAIService;
+    private final GroqInsightService groqInsightService;
     private final Optional<String> webhookUrl;
     private final ConcurrentLinkedDeque<String> recentLogLines = new ConcurrentLinkedDeque<>();
 
     public NotificationService(
             RestTemplate restTemplate,
-            LocalAIService localAIService,
+            GroqInsightService groqInsightService,
             @Value("${teams.webhook.url:}") String teamsWebhookUrl) {
         this.restTemplate = restTemplate;
-        this.localAIService = localAIService;
+        this.groqInsightService = groqInsightService;
         this.webhookUrl =
                 Optional.ofNullable(teamsWebhookUrl).map(String::trim).filter(s -> !s.isBlank());
     }
@@ -70,9 +70,10 @@ public class NotificationService {
     }
 
     /**
-     * Manual demo path: posts a natural manager-style message (from {@link
-     * LocalAIService#generateManagerStyleMessage(Ticket)}) to Teams. Requires {@link
-     * #isWebhookEnabled()}.
+ * Manual demo path: posts a natural manager-style message (from {@link
+ * GroqInsightService#generateManagerStyleMessage(Ticket)} — Groq when configured, else {@link
+ * LocalAIService#generateManagerStyleMessage(Ticket)}) to Teams. Requires {@link
+ * #isWebhookEnabled()}.
      *
      * @return the exact text posted (for client previews and logs)
      * @throws IllegalStateException when URL not configured
@@ -84,7 +85,7 @@ public class NotificationService {
             throw new IllegalStateException("Teams webhook URL is not configured");
         }
         PipelineMdc.stageAndAction(PipelineMdc.STAGE_NOTIFY, PipelineMdc.ACTION_TEAMS_WEBHOOK);
-        String body = localAIService.generateManagerStyleMessage(ticket);
+        String body = groqInsightService.generateManagerStyleMessage(ticket);
         postJson(new TeamsTextMessage(body));
         recordLine("[TEAMS SENT] ticket=" + ticket.getId());
         log.info("Teams webhook delivered for ticketId={}", ticket.getId());

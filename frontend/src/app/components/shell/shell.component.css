@@ -7,9 +7,9 @@
 }
 
 .top-nav {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 1rem;
   padding: 0 0.75rem 0 0.5rem;
   height: 56px;
@@ -26,6 +26,12 @@
   min-width: 0;
 }
 
+.brand-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .app-name {
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -35,6 +41,14 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+.app-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .nav-center {
@@ -67,8 +81,11 @@
 
 .nav-tab.active {
   color: var(--text);
-  background: var(--surface-3);
-  box-shadow: inset 0 0 0 1px var(--border);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(14, 165, 233, 0.12));
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+  font-weight: 750;
 }
 
 .nav-right {
@@ -180,16 +197,50 @@
   padding: 0;
 }
 
-.notif-list li {
-  padding: 0.5rem 0.9rem;
-  display: grid;
-  gap: 0.15rem;
+.notif-li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.45rem 0.65rem 0.45rem 0.75rem;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 0.82rem;
 }
 
-.notif-list li:last-child {
+.notif-li:last-child {
   border-bottom: none;
+}
+
+.notif-dismiss {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.notif-dismiss:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.notif-li-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.12rem;
 }
 
 .notif-id {
@@ -325,7 +376,9 @@
 .sb-item.active {
   background: var(--surface-3);
   color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--border);
+  box-shadow:
+    inset 3px 0 0 var(--accent-1),
+    inset 0 0 0 1px var(--border);
 }
 
 .sb-icon {
@@ -343,6 +396,60 @@
   flex: 1;
   min-width: 0;
   overflow: auto;
+  transition: background 0.35s ease;
+}
+
+.main-area.ws-tickets {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.08) 0%, var(--app-bg) 34%);
+}
+
+.main-area.ws-overview {
+  background: var(--app-bg);
+}
+
+.main-area.ws-risk {
+  background: linear-gradient(180deg, rgba(69, 10, 10, 0.2) 0%, var(--app-bg) 28%);
+}
+
+.main-area.ws-bottlenecks {
+  background: linear-gradient(180deg, rgba(15, 118, 110, 0.12) 0%, var(--app-bg) 32%);
+}
+
+.main-area.ws-team-analytics {
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, var(--app-bg) 36%);
+}
+
+.main-area.ws-ai-agent {
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.12) 0%, var(--app-bg) 38%);
+  /* Only the agent chat pane scrolls; shell sidebar + this column stay fixed */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sb-ai-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--accent-1);
+  opacity: 0.95;
+}
+
+.sb-item.active .sb-ai-icon {
+  color: var(--accent-1);
+  opacity: 1;
+}
+
+.sb-emoji {
+  font-size: 1.05rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
 }
 
 .mono {

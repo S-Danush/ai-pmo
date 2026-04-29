@@ -1,37 +1,28 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 
-const STORAGE_KEY = 'aipmo_auth';
+const STORAGE_KEY = 'aipmo-auth';
 
 @Injectable({
   providedIn: 'root',
 })
 export class AuthService {
-  isLoggedIn(): boolean {
-    try {
-      return localStorage.getItem(STORAGE_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  }
+  readonly isLoggedIn = signal(this.readStored());
 
-  /** Demo auth: username `admin`, password `1234`. */
   login(username: string, password: string): boolean {
-    const ok = username === 'admin' && password === '1234';
-    if (ok) {
-      try {
-        localStorage.setItem(STORAGE_KEY, 'true');
-      } catch {
-        /* ignore */
-      }
+    if (username.trim() === 'admin' && password === '1234') {
+      sessionStorage.setItem(STORAGE_KEY, '1');
+      this.isLoggedIn.set(true);
+      return true;
     }
-    return ok;
+    return false;
   }
 
   logout(): void {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
+    sessionStorage.removeItem(STORAGE_KEY);
+    this.isLoggedIn.set(false);
+  }
+
+  private readStored(): boolean {
+    return sessionStorage.getItem(STORAGE_KEY) === '1';
   }
 }

@@ -1,8 +1,8 @@
 import { Injectable, signal } from '@angular/core';
 
-export type ThemeMode = 'dark' | 'light';
+export type ThemeMode = 'light' | 'dark';
 
-const STORAGE_KEY = 'aipmo_theme';
+const STORAGE_KEY = 'aipmo-theme';
 
 @Injectable({
   providedIn: 'root',
@@ -16,35 +16,32 @@ export class ThemeService {
 
   toggle(): void {
     const next: ThemeMode = this.mode() === 'dark' ? 'light' : 'dark';
-    this.setMode(next);
-  }
-
-  setMode(m: ThemeMode): void {
-    this.mode.set(m);
-    try {
-      localStorage.setItem(STORAGE_KEY, m);
-    } catch {
-      /* ignore */
-    }
-    this.apply(m);
+    this.mode.set(next);
+    localStorage.setItem(STORAGE_KEY, next);
+    this.apply(next);
   }
 
   private readInitial(): ThemeMode {
-    try {
-      const s = localStorage.getItem(STORAGE_KEY);
-      if (s === 'light' || s === 'dark') {
-        return s;
-      }
-    } catch {
-      /* ignore */
+    const stored = localStorage.getItem(STORAGE_KEY) as ThemeMode | null;
+    if (stored === 'light' || stored === 'dark') {
+      return stored;
     }
     return 'dark';
   }
 
   private apply(m: ThemeMode): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
     const root = document.documentElement;
-    root.setAttribute('data-theme', m);
-    root.classList.toggle('theme-light', m === 'light');
-    root.classList.toggle('theme-dark', m === 'dark');
+    root.removeAttribute('data-theme');
+    root.classList.remove('theme-light', 'theme-dark');
+    if (m === 'light') {
+      root.setAttribute('data-theme', 'light');
+      root.classList.add('theme-light');
+    } else {
+      root.setAttribute('data-theme', 'dark');
+      root.classList.add('theme-dark');
+    }
   }
 }

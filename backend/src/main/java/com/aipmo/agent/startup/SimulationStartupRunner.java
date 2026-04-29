@@ -1,5 +1,6 @@
 package com.aipmo.agent.startup;
 
+import com.aipmo.agent.service.GroqAIService;
 import com.aipmo.agent.service.NotificationService;
 import com.aipmo.agent.service.SimulationDataService;
 import org.slf4j.Logger;
@@ -17,11 +18,15 @@ public class SimulationStartupRunner implements ApplicationRunner {
 
     private final SimulationDataService simulationDataService;
     private final NotificationService notificationService;
+    private final GroqAIService groqAIService;
 
     public SimulationStartupRunner(
-            SimulationDataService simulationDataService, NotificationService notificationService) {
+            SimulationDataService simulationDataService,
+            NotificationService notificationService,
+            GroqAIService groqAIService) {
         this.simulationDataService = simulationDataService;
         this.notificationService = notificationService;
+        this.groqAIService = groqAIService;
     }
 
     @Override
@@ -31,6 +36,10 @@ public class SimulationStartupRunner implements ApplicationRunner {
                 notificationService.isWebhookEnabled()
                         ? "Teams      : ACTIVE (webhook enabled)"
                         : "Teams      : NO WEBHOOK (set teams.webhook.url for live posts)";
+        String groqLine =
+                groqAIService.isEnabled()
+                        ? "AI (Groq)  : ACTIVATED (GROQ_API_KEY - insights & chat when eligible)"
+                        : "AI (Groq)  : SIMULATED (no API key - local insight engine only)";
         log.info(
                 """
                 ----------------------------------------
@@ -39,11 +48,12 @@ public class SimulationStartupRunner implements ApplicationRunner {
                 Tickets loaded: {}
                 Jira       : DISABLED
                 GitHub     : DISABLED
-                OpenAI     : SIMULATED
+                {}
                 {}
                 Notifications: MANUAL ONLY
                 ----------------------------------------""",
                 n,
+                groqLine,
                 teamsLine);
     }
 }

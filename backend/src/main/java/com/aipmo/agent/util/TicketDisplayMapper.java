@@ -103,6 +103,10 @@ public final class TicketDisplayMapper {
             case MetricsService.FLAG_SLOWDOWN -> "PR merge well above team average";
             case MetricsService.FLAG_BLOCKED -> "Blocked / dependency";
             case MetricsService.FLAG_DEPENDENCY_RISK -> "Dependency / wait risk";
+            case MetricsService.FLAG_DEV_NOT_STARTED -> "No commits yet";
+            case MetricsService.FLAG_PR_NOT_CREATED -> "PR not opened";
+            case MetricsService.FLAG_MERGED_NOT_DEPLOYED -> "Merged, not deployed";
+            case MetricsService.FLAG_ACTIVE_DEVELOPMENT -> "Recent commits";
             case MetricsService.FLAG_PR_DATA_MISSING, MetricsService.FLAG_DATA_INSUFFICIENT -> null;
             default -> null;
         };

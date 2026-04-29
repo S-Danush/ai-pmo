@@ -2,6 +2,8 @@ package com.aipmo.agent.service;
 
 import com.aipmo.agent.config.MetricsProperties;
 import com.aipmo.agent.dto.DataQuality;
+import com.aipmo.agent.engine.ActionEngine;
+import com.aipmo.agent.engine.RootCauseEngine;
 import com.aipmo.agent.model.Ticket;
 import com.aipmo.agent.util.DeliveryViewEnricher;
 import com.aipmo.agent.util.Severity;
@@ -11,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -35,6 +38,15 @@ public class MetricsService {
     /** External dependency (non-NONE) and dwell past priority-based threshold. */
     public static final String FLAG_DEPENDENCY_RISK = "DEPENDENCY_RISK";
 
+    /** Synthetic Git: zero commits in active workflow lanes. */
+    public static final String FLAG_DEV_NOT_STARTED = "DEV_NOT_STARTED";
+    /** Commits recorded but PR not opened (simulated smart commits without PR). */
+    public static final String FLAG_PR_NOT_CREATED = "PR_NOT_CREATED";
+    /** Merged PR not yet visible in an environment (pipeline delay). */
+    public static final String FLAG_MERGED_NOT_DEPLOYED = "MERGED_NOT_DEPLOYED";
+    /** Recent commit activity on the branch. */
+    public static final String FLAG_ACTIVE_DEVELOPMENT = "ACTIVE_DEVELOPMENT";
+
     private static final int DEPENDENCY_RISK_HOURS_HIGH_PRIORITY = 24;
     private static final int DEPENDENCY_RISK_HOURS_DEFAULT = 48;
 
@@ -45,9 +57,14 @@ public class MetricsService {
     private static final double TREND_PEER_RATIO = 1.15;
 
     private final MetricsProperties metricsProperties;
+    private final RootCauseEngine rootCauseEngine;
+    private final ActionEngine actionEngine;
 
-    public MetricsService(MetricsProperties metricsProperties) {
+    public MetricsService(
+            MetricsProperties metricsProperties, RootCauseEngine rootCauseEngine, ActionEngine actionEngine) {
         this.metricsProperties = metricsProperties;
+        this.rootCauseEngine = rootCauseEngine;
+        this.actionEngine = actionEngine;
     }
 
     public List<Ticket> analyzeTickets(List<Ticket> tickets) {
@@ -176,6 +193,8 @@ public class MetricsService {
             flagSet.add(FLAG_DEPENDENCY_RISK);
         }
 
+        applyGitSimulationFlags(source, flagSet, now);
+
         List<String> correlationInsights = buildCorrelationInsights(source, pr, flagSet);
 
         String severity = computeSeverity(flagSet);
@@ -187,6 +206,12 @@ public class MetricsService {
                         s.medianPr(),
                         s.prComparable(),
                         s.prBatchMissing());
+
+        Ticket probe =
+                source.toBuilder().flags(new ArrayList<>(flagSet)).build();
+        RootCauseEngine.Analysis rc =
+                rootCauseEngine.analyze(source, flagSet, s.medianPr(), s.prComparable());
+        ActionEngine.ActionPlan plan = actionEngine.decide(probe, rc.dto());
 
         if (log.isDebugEnabled()) {
             log.debug(
@@ -228,16 +253,32 @@ public class MetricsService {
                         .branchName(source.getBranchName())
                         .lastCommitAt(source.getLastCommitAt())
                         .prAuthor(source.getPrAuthor())
+                        .commitMessages(
+                                source.getCommitMessages() != null
+                                        ? new ArrayList<>(source.getCommitMessages())
+                                        : new ArrayList<>())
+                        .prTitle(source.getPrTitle())
+                        .prLink(source.getPrLink())
+                        .commitCount(source.getCommitCount())
+                        .deploymentTag(source.getDeploymentTag())
+                        .deployed(source.isDeployed())
+                        .deployedAt(source.getDeployedAt())
+                        .deployEnvironment(source.getDeployEnvironment())
+                        .prAgeHours(source.getPrAgeHours())
+                        .reviewerDelayHours(source.getReviewerDelayHours())
                         .flags(new ArrayList<>(flagSet))
                         .insight(source.getInsight())
                         .nudge(source.getNudge())
                         .reasoning(source.getReasoning())
-                        .rootCause(source.getRootCause())
+                        .rootCause(rc.summaryLine())
+                        .rootCauseAnalysis(rc.dto())
+                        .explainabilityFactors(new ArrayList<>(rc.explainabilityFactors()))
                         .impact(source.getImpact())
-                        .recommendedAction(source.getRecommendedAction())
+                        .recommendedAction(plan.recommendedAction())
+                        .actionOwner(plan.actionOwner())
                         .severity(severity)
                         .trendIndicator(trendIndicator)
-                        .confidence(source.getConfidence())
+                        .confidence(rc.dto().getConfidence())
                         .lastUpdated(source.getJiraUpdatedAt() != null ? source.getJiraUpdatedAt() : now)
                         .dataQuality(
                                 source.getDataQuality() != null ? source.getDataQuality() : DataQuality.MOCK)
@@ -337,6 +378,15 @@ public class MetricsService {
         if (depRisk) {
             return Severity.MEDIUM;
         }
+        if (f.contains(FLAG_MERGED_NOT_DEPLOYED)) {
+            return Severity.MEDIUM;
+        }
+        if (f.contains(FLAG_PR_NOT_CREATED)) {
+            return Severity.MEDIUM;
+        }
+        if (f.contains(FLAG_DEV_NOT_STARTED)) {
+            return Severity.MEDIUM;
+        }
         if (bounce) {
             return Severity.LOW;
         }
@@ -376,6 +426,69 @@ public class MetricsService {
         return cat != null && "In Progress".equalsIgnoreCase(cat.trim());
     }
 
+    private static boolean isBacklogOrDone(Ticket t) {
+        String s = t.getStatus();
+        if (s == null || s.isBlank()) {
+            return false;
+        }
+        String n = s.trim();
+        return "Backlog".equalsIgnoreCase(n) || "Done".equalsIgnoreCase(n);
+    }
+
+    /** Eligible lanes where zero commits implies dev-not-started (excludes backlog/done). */
+    private static boolean devNotStartedWorkflowLane(Ticket t) {
+        if (isBacklogOrDone(t)) {
+            return false;
+        }
+        String s = t.getStatus();
+        if (s == null || s.isBlank()) {
+            return false;
+        }
+        String n = s.trim();
+        return "In Progress".equalsIgnoreCase(n)
+                || "Review".equalsIgnoreCase(n)
+                || "Blocked".equalsIgnoreCase(n);
+    }
+
+    private static boolean prStatusNotCreated(String ps) {
+        return ps == null || ps.isBlank() || "NOT_CREATED".equalsIgnoreCase(ps.trim());
+    }
+
+    private static boolean prStatusOpen(String ps) {
+        return ps != null && "OPEN".equalsIgnoreCase(ps.trim());
+    }
+
+    private static boolean prStatusMerged(String ps) {
+        return ps != null && "MERGED".equalsIgnoreCase(ps.trim());
+    }
+
+    private void applyGitSimulationFlags(Ticket source, Set<String> flagSet, Instant now) {
+        int commits = Math.max(0, source.getCommitCount());
+        String ps = source.getPrStatus();
+        if (commits == 0 && devNotStartedWorkflowLane(source)) {
+            flagSet.add(FLAG_DEV_NOT_STARTED);
+        }
+        if (commits > 0 && prStatusNotCreated(ps)) {
+            flagSet.add(FLAG_PR_NOT_CREATED);
+        }
+        Double prAge = source.getPrAgeHours();
+        if (prStatusOpen(ps)
+                && prAge != null
+                && prAge > metricsProperties.getGitPrDelayThresholdHours()) {
+            flagSet.add(FLAG_PR_DELAY);
+        }
+        if (prStatusMerged(ps) && !source.isDeployed()) {
+            flagSet.add(FLAG_MERGED_NOT_DEPLOYED);
+        }
+        Instant lastCommit = source.getLastCommitAt();
+        if (lastCommit != null) {
+            long hours = ChronoUnit.HOURS.between(lastCommit, now);
+            if (hours >= 0 && hours <= metricsProperties.getGitActiveDevelopmentHours()) {
+                flagSet.add(FLAG_ACTIVE_DEVELOPMENT);
+            }
+        }
+    }
+
     private static List<String> buildCorrelationInsights(Ticket source, int pr, Set<String> flagSet) {
         List<String> out = new ArrayList<>();
         boolean blocked =
@@ -393,6 +506,15 @@ public class MetricsService {
             } else {
                 out.add("Code is ready but review is slowing things down.");
             }
+        }
+        if (flagSet.contains(FLAG_DEV_NOT_STARTED)) {
+            out.add("Git shows no commits yet — development may not have started.");
+        }
+        if (flagSet.contains(FLAG_PR_NOT_CREATED)) {
+            out.add("Commits exist but no pull request is open — work has not entered review.");
+        }
+        if (flagSet.contains(FLAG_MERGED_NOT_DEPLOYED)) {
+            out.add("Merged change not deployed yet — release pipeline or scheduling delay.");
         }
         return out;
     }

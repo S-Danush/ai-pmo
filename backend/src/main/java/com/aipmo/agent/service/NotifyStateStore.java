@@ -4,44 +4,55 @@ import com.aipmo.agent.model.Ticket;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
-/** In-memory “last manual Teams notify” timestamps for demo / evaluation (not persisted). */
+/**
+ * Persists manual Teams notification timestamps across agent runs so {@code lastNotifiedAt} is not
+ * lost when the dashboard refreshes from a new snapshot.
+ */
 @Component
 public class NotifyStateStore {
 
     private final ConcurrentHashMap<String, Instant> lastNotifiedByTicketId = new ConcurrentHashMap<>();
 
-    public void recordSent(String ticketId, Instant at) {
-        if (ticketId != null && !ticketId.isBlank()) {
-            lastNotifiedByTicketId.put(ticketId.trim(), at);
+    /** Overlay stored notification times onto tickets from the latest run / metrics pass. */
+    public List<Ticket> mergeAll(List<Ticket> tickets) {
+        if (tickets == null || tickets.isEmpty()) {
+            return tickets == null ? List.of() : tickets;
         }
-    }
-
-    public Instant getLastNotified(String ticketId) {
-        if (ticketId == null) {
-            return null;
+        List<Ticket> out = new ArrayList<>(tickets.size());
+        for (Ticket t : tickets) {
+            out.add(merge(t));
         }
-        return lastNotifiedByTicketId.get(ticketId.trim());
+        return out;
     }
 
     public Ticket merge(Ticket t) {
-        if (t == null || t.getId() == null) {
+        if (t == null || t.getId() == null || t.getId().isBlank()) {
             return t;
         }
-        Instant at = lastNotifiedByTicketId.get(t.getId().trim());
-        if (at == null) {
+        Instant stored = lastNotifiedByTicketId.get(t.getId());
+        if (stored == null) {
             return t;
         }
-        return t.toBuilder().lastNotifiedAt(at).build();
+        Instant onTicket = t.getLastNotifiedAt();
+        if (onTicket == null || stored.isAfter(onTicket)) {
+            return t.toBuilder().lastNotifiedAt(stored).build();
+        }
+        return t;
     }
 
-    public List<Ticket> mergeAll(List<Ticket> tickets) {
-        if (tickets == null) {
-            return List.of();
+    public void recordNotification(String ticketId, Instant at) {
+        if (ticketId == null || ticketId.isBlank() || at == null) {
+            return;
         }
-        return tickets.stream().map(this::merge).collect(Collectors.toList());
+        lastNotifiedByTicketId.merge(ticketId, at, (a, b) -> a.isAfter(b) ? a : b);
+    }
+
+    /** Alias for {@link #recordNotification(String, Instant)} — used after a successful Teams send. */
+    public void recordSent(String ticketId, Instant sentAt) {
+        recordNotification(ticketId, sentAt);
     }
 }

@@ -19,7 +19,7 @@ public class TicketNotifyService {
 
     private final TicketDataService ticketDataService;
     private final MetricsService metricsService;
-    private final LocalAIService localAIService;
+    private final GroqInsightService groqInsightService;
     private final AiAnalysisCache aiAnalysisCache;
     private final NotificationService notificationService;
     private final NotifyStateStore notifyStateStore;
@@ -27,13 +27,13 @@ public class TicketNotifyService {
     public TicketNotifyService(
             TicketDataService ticketDataService,
             MetricsService metricsService,
-            LocalAIService localAIService,
+            GroqInsightService groqInsightService,
             AiAnalysisCache aiAnalysisCache,
             NotificationService notificationService,
             NotifyStateStore notifyStateStore) {
         this.ticketDataService = ticketDataService;
         this.metricsService = metricsService;
-        this.localAIService = localAIService;
+        this.groqInsightService = groqInsightService;
         this.aiAnalysisCache = aiAnalysisCache;
         this.notificationService = notificationService;
         this.notifyStateStore = notifyStateStore;
@@ -93,7 +93,7 @@ public class TicketNotifyService {
         if (cached != null) {
             raw = cached.insight();
         } else {
-            outcome = localAIService.generateStructuredInsight(merged);
+            outcome = groqInsightService.generateStructuredInsight(merged);
             raw = outcome.insight();
             aiAnalysisCache.put(cacheKey, raw);
         }

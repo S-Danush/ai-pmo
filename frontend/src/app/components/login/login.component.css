@@ -1,155 +1,96 @@
 .login-page {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem 1rem;
-  background: linear-gradient(145deg, #0a1628 0%, #1e1b4b 42%, #4c1d95 100%);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  position: relative;
+  background: var(--app-bg);
+}
+
+.login-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% -20%, rgba(37, 99, 235, 0.25), transparent),
+    radial-gradient(ellipse 60% 50% at 100% 50%, rgba(124, 58, 237, 0.12), transparent);
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  border-radius: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
 }
 
 .login-brand {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 2rem;
-  color: rgba(255, 255, 255, 0.92);
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 28px;
 }
 
-.login-logo {
-  font-size: 1.5rem;
-  opacity: 0.95;
+.brand-mark {
+  font-size: 28px;
+  color: var(--accent-1);
+  line-height: 1;
 }
 
-.login-brand-text {
-  font-size: 1.05rem;
-}
-
-.login-card {
-  width: min(420px, 100%);
-  padding: 2rem 2rem 2.25rem;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow:
-    0 24px 48px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.login-title {
-  margin: 0 0 0.35rem;
-  font-size: 1.5rem;
+.login-brand h1 {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
   font-weight: 700;
-  color: #f8fafc;
   letter-spacing: -0.02em;
 }
 
-.login-sub {
-  margin: 0 0 1.5rem;
-  font-size: 0.88rem;
-  color: rgba(226, 232, 240, 0.75);
-  line-height: 1.45;
+.brand-sub {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
 }
 
-.login-error {
-  margin-bottom: 1rem;
-  padding: 0.6rem 0.85rem;
-  border-radius: 10px;
-  font-size: 0.88rem;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  color: #fecaca;
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  margin-bottom: 1rem;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
-.field-label {
-  font-size: 0.72rem;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: rgba(226, 232, 240, 0.65);
+.field input {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text);
 }
 
-.input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.55rem 0.85rem;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(15, 23, 42, 0.6);
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.input-wrap:focus-within {
-  border-color: rgba(139, 92, 246, 0.65);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22);
-}
-
-.field-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  color: rgba(148, 163, 184, 0.95);
-}
-
-.input {
-  flex: 1;
+.btn-primary {
+  margin-top: 8px;
+  padding: 14px;
   border: none;
-  background: transparent;
-  color: #f8fafc;
-  font-size: 0.95rem;
-  outline: none;
-}
-
-.input::placeholder {
-  color: rgba(148, 163, 184, 0.55);
-}
-
-.btn-login {
-  width: 100%;
-  margin-top: 0.5rem;
-  padding: 0.75rem 1rem;
-  border: none;
-  border-radius: 12px;
-  font-size: 0.95rem;
-  font-weight: 650;
+  border-radius: 10px;
+  font-weight: 600;
   cursor: pointer;
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
   color: #fff;
-  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 55%, #a855f7 100%);
-  box-shadow:
-    0 4px 16px rgba(124, 58, 237, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease,
-    filter 0.15s ease;
 }
 
-.btn-login:hover:not(:disabled) {
-  transform: translateY(-1px) scale(1.01);
+.btn-primary:hover {
   filter: brightness(1.05);
-  box-shadow:
-    0 8px 28px rgba(124, 58, 237, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
-.btn-login:active:not(:disabled) {
-  transform: translateY(0) scale(0.99);
-}
-
-.btn-login:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
+.err {
+  color: var(--state-blocked);
+  font-size: 0.9rem;
+  margin: 0;
 }

@@ -11,431 +11,360 @@
 
   <div *ngIf="error" class="card error-banner">{{ error }}</div>
 
-  <!-- Toolbar -->
   <div class="dash-toolbar card toolbar-card" *ngIf="projectSummary">
     <span class="toolbar-meta mono-nums">Updated {{ lastUpdatedDisplay() }}</span>
     <div class="toolbar-actions">
       <span *ngIf="dataQualityBadge()" [class]="dataQualityBadgeClass()" class="toolbar-dq">{{ dataQualityBadge() }}</span>
-      <button type="button" class="btn secondary" (click)="loadDashboard()" [disabled]="loading">Refresh</button>
-      <button type="button" class="btn primary gradient-btn" (click)="runAgent()" [disabled]="loading">
+      <button type="button" class="btn primary gradient-btn toolbar-run-agent" (click)="runAgent()" [disabled]="loading">
         {{ loading ? 'Running…' : 'Run Agent' }}
       </button>
     </div>
   </div>
 
-  <!-- —— Dashboard tab —— -->
-  <div class="tab-panel-animate" *ngIf="dash.activeTab() === 'dashboard'">
-    <section class="exec-hero card premium-card" *ngIf="projectSummary" [ngClass]="statusClass()">
-      <div class="exec-hero-top">
-        <div>
-          <p class="exec-kicker">Executive summary</p>
-          <h1 class="exec-main-title">PROJECT HEALTH DASHBOARD</h1>
-          <div class="exec-divider"></div>
-          <div class="exec-metrics-row">
-            <div class="exec-metric">
-              <span class="exec-metric-label">Overall Status</span>
-              <span class="exec-metric-value status-line">
-                <span class="status-chip" [ngClass]="statusClass()">{{ statusLabelShort() }}</span>
-              </span>
-            </div>
-            <div class="exec-metric">
-              <span class="exec-metric-label">Delivery Risk</span>
-              <span class="exec-metric-value risk-gradient" [ngClass]="portfolioDeliveryRiskClass()">{{
-                portfolioDeliveryRiskDisplay()
-              }}</span>
-            </div>
-            <div class="exec-metric">
-              <span class="exec-metric-label">Predicted Delay</span>
-              <span class="exec-metric-value mono-nums">{{ predictedDelayDays() }}</span>
+  <div class="workspace-wrap">
+    <div [@workspaceSwitch]="dash.sidebarSection()" class="workspace-anim-root">
+      <ng-container *ngIf="dash.sidebarSection() === 'overview' && projectSummary">
+        <section class="exec-hero card premium-card overview-hero" [ngClass]="statusClass()">
+          <div class="exec-hero-top">
+            <div>
+              <p class="exec-kicker">Executive overview</p>
+              <h1 class="exec-main-title">PORTFOLIO DELIVERY HEALTH</h1>
+              <div class="exec-divider"></div>
+              <div class="exec-metrics-row">
+                <div class="exec-metric">
+                  <span class="exec-metric-label">Overall Status</span>
+                  <span class="exec-metric-value status-line">
+                    <span class="status-chip" [ngClass]="statusClass()">{{ statusLabelShort() }}</span>
+                  </span>
+                </div>
+                <div class="exec-metric">
+                  <span class="exec-metric-label">Delivery Risk</span>
+                  <span class="exec-metric-value risk-gradient" [ngClass]="portfolioDeliveryRiskClass()">{{
+                    portfolioDeliveryRiskDisplay()
+                  }}</span>
+                </div>
+                <div class="exec-metric">
+                  <span class="exec-metric-label">Predicted Delay</span>
+                  <span class="exec-metric-value mono-nums">{{ predictedDelayDays() }}</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-    </section>
+        </section>
 
-    <p class="sim-footnote" *ngIf="projectSummary">
-      Simulation dataset — Teams posts only when you use <strong>Send Update</strong> (webhook required).
-    </p>
+        <section class="kpi-strip overview-kpi" *ngIf="projectSummary">
+          <div class="kpi-card premium-card">
+            <span class="kpi-icon" aria-hidden="true">◇</span>
+            <div class="kpi-value mono-nums">{{ overviewTotalTickets() }}</div>
+            <div class="kpi-label">Total Tickets</div>
+            <span class="kpi-trend subtle">In current scope</span>
+          </div>
+          <div class="kpi-card premium-card kpi-warn">
+            <span class="kpi-icon">⚑</span>
+            <div class="kpi-value mono-nums">{{ overviewAtRiskCount() }}</div>
+            <div class="kpi-label">At Risk</div>
+            <span class="kpi-trend warn">Elevated delivery risk</span>
+          </div>
+          <div class="kpi-card premium-card kpi-danger">
+            <span class="kpi-icon">■</span>
+            <div class="kpi-value mono-nums">{{ overviewBlockedCount() }}</div>
+            <div class="kpi-label">Blocked</div>
+            <span class="kpi-trend danger">Queue pressure</span>
+          </div>
+          <div class="kpi-card premium-card kpi-warn">
+            <span class="kpi-icon">↑</span>
+            <div class="kpi-value mono-nums">{{ overviewHighPriorityDelayed() }}</div>
+            <div class="kpi-label">High Priority Delayed</div>
+            <span class="kpi-hint">&gt;72h in progress</span>
+          </div>
+          <div class="kpi-card premium-card">
+            <span class="kpi-icon">◷</span>
+            <div class="kpi-value mono-nums">
+              {{ overviewAvgTimeInProgressHours() != null ? overviewAvgTimeInProgressHours() + 'h' : '—' }}
+            </div>
+            <div class="kpi-label">Avg Time in Progress</div>
+            <span class="kpi-trend subtle">In-flight work</span>
+          </div>
+        </section>
 
-    <!-- Run history spotlight -->
-    <section class="card premium-card history-spotlight" *ngIf="projectSummary && dash.sidebarSection() === 'history'">
-      <h2 class="panel-title">Run history</h2>
-      <p class="muted panel-sub">Delivery snapshots from repeated agent runs — compare dwell and PR cycle.</p>
-      <div class="trend-spark" *ngIf="deliveryTrendSnapshots().length > 0">
-        <div class="trend-bars large">
-          <div
-            class="trend-bar"
-            *ngFor="let s of deliveryTrendSnapshots(); let i = index"
-            [class.trend-bar-active]="i === deliveryTrendSnapshots().length - 1"
-            [style.height.%]="trendBarHeight(s.avgDwellHours)"
-            [attr.title]="trendBarTitle(s)"
-          ></div>
+        <div class="overview-charts-grid overview-charts-split" *ngIf="projectSummary">
+          <ng-container *ngIf="overviewScopeSummary() as scope">
+            <article class="chart-card premium-card donut-card">
+              <h3 class="chart-card-title">Risk distribution</h3>
+              <p class="chart-sub muted">Active items in current scope — healthy vs at risk vs blocked</p>
+              <div class="pie-row donut-row">
+                <div
+                  class="pie-visual donut-visual"
+                  [style.background]="healthDonutGradient()"
+                  role="img"
+                  aria-label="Healthy at risk blocked donut"
+                ></div>
+                <ul class="pie-legend">
+                  <li *ngFor="let s of healthDistributionSlices()">
+                    <span class="pie-dot" [style.background]="s.color"></span>
+                    <span class="pie-label">{{ s.label }}</span>
+                    <span class="pie-count mono-nums">{{ s.count }}</span>
+                  </li>
+                </ul>
+              </div>
+            </article>
+            <aside class="chart-card premium-card overview-scope-card">
+              <h3 class="chart-card-title">{{ scope.heading }}</h3>
+              <p class="chart-sub muted">{{ scope.sub }}</p>
+              <dl class="overview-scope-dl">
+                <div *ngFor="let r of scope.rows">
+                  <dt>{{ r.k }}</dt>
+                  <dd class="mono-nums">{{ r.v }}</dd>
+                </div>
+              </dl>
+            </aside>
+          </ng-container>
         </div>
-      </div>
-    </section>
 
-    <!-- KPI -->
-    <section class="kpi-strip" *ngIf="projectSummary">
-      <div class="kpi-card premium-card">
-        <span class="kpi-icon" aria-hidden="true">◇</span>
-        <div class="kpi-value mono-nums">{{ kpiTotalTickets() }}</div>
-        <div class="kpi-label">Total Tickets</div>
-        <span class="kpi-trend subtle">Portfolio scope</span>
-      </div>
-      <div class="kpi-card premium-card kpi-warn">
-        <span class="kpi-icon">⚑</span>
-        <div class="kpi-value mono-nums">{{ kpiAtRisk() }}</div>
-        <div class="kpi-label">At Risk</div>
-        <span class="kpi-trend warn">Needs attention</span>
-      </div>
-      <div class="kpi-card premium-card kpi-danger">
-        <span class="kpi-icon">■</span>
-        <div class="kpi-value mono-nums">{{ kpiBlocked() }}</div>
-        <div class="kpi-label">Blocked</div>
-        <span class="kpi-trend danger">Queue pressure</span>
-      </div>
-      <div class="kpi-card premium-card kpi-warn">
-        <span class="kpi-icon">↑</span>
-        <div class="kpi-value mono-nums">{{ kpiHighPriorityDelayed() }}</div>
-        <div class="kpi-label">High Priority Delayed</div>
-        <span class="kpi-hint">&gt;72h in progress</span>
-      </div>
-      <div class="kpi-card premium-card">
-        <span class="kpi-icon">◷</span>
-        <div class="kpi-value mono-nums">
-          {{ kpiAvgTimeInProgressHours() != null ? kpiAvgTimeInProgressHours() + 'h' : '—' }}
-        </div>
-        <div class="kpi-label">Avg Time in Progress</div>
-        <span class="kpi-trend subtle">In-flight work</span>
-      </div>
-      <div class="kpi-card premium-card" [class.kpi-trend-bad]="(kpiPrDelayPercent() ?? 0) > 0" [class.kpi-trend-good]="(kpiPrDelayPercent() ?? 0) < 0">
-        <span class="kpi-icon">↻</span>
-        <div class="kpi-value mono-nums">
-          {{ kpiPrDelayPercent() != null ? (kpiPrDelayPercent()! > 0 ? '+' : '') + kpiPrDelayPercent() + '%' : '—' }}
-          <span class="kpi-arrow" *ngIf="kpiPrDelayPercent() != null">{{ kpiPrTrendArrow() }}</span>
-        </div>
-        <div class="kpi-label">PR Delay %</div>
-        <span class="kpi-trend subtle">vs baseline</span>
-      </div>
-    </section>
+        <article class="chart-card premium-card overview-trend-card" *ngIf="deliveryTrendSnapshots().length">
+          <h3 class="chart-card-title">Delivery trend</h3>
+          <p class="chart-sub muted">Average dwell (hours) across recent agent runs — higher bars mean more time in status.</p>
+          <div class="trend-spark-wrap" role="img" aria-label="Dwell trend by snapshot">
+            <div *ngFor="let p of deliveryTrendSnapshots()" class="trend-spark-col" [attr.title]="trendBarTitle(p)">
+              <div class="trend-spark-bar" [style.height.%]="trendBarHeight(p.avgDwellHours)"></div>
+              <span class="trend-spark-label">{{ p.recordedAt | date : 'MM/dd' }}</span>
+            </div>
+          </div>
+        </article>
 
-    <!-- Trend + comparison -->
-    <section class="card premium-card trend-card" *ngIf="projectSummary">
-      <div class="trend-head">
-        <h2 class="panel-title">Delivery trend</h2>
-        <div class="run-toggle" role="group" aria-label="Run comparison window">
-          <button type="button" class="seg" [class.on]="runView === 'current'" (click)="runView = 'current'">Current</button>
-          <button type="button" class="seg" [class.on]="runView === 'previous'" (click)="runView = 'previous'">Previous</button>
-        </div>
-      </div>
-      <p class="trend-narrative" *ngFor="let line of deliveryTrendLines()">{{ line }}</p>
-      <div class="comparison-grid" *ngIf="deliveryTrendSnapshots().length >= 2">
-        <div class="comparison-col">
-          <h4 class="comparison-title">New risks</h4>
-          <ul>
-            <li *ngFor="let x of runComparisonBullets().newRisks">{{ x }}</li>
-          </ul>
-        </div>
-        <div class="comparison-col resolved">
-          <h4 class="comparison-title">Resolved / improved</h4>
-          <ul>
-            <li *ngFor="let x of runComparisonBullets().resolved">{{ x }}</li>
-          </ul>
-        </div>
-      </div>
-      <div class="trend-spark" *ngIf="deliveryTrendSnapshots().length > 0">
-        <div class="trend-spark-label">Avg dwell (h) across saved runs</div>
-        <div class="trend-bars">
-          <div
-            class="trend-bar"
-            *ngFor="let s of deliveryTrendSnapshots()"
-            [style.height.%]="trendBarHeight(s.avgDwellHours)"
-            [attr.title]="trendBarTitle(s)"
-          ></div>
-        </div>
-      </div>
-    </section>
+        <section class="bn-summary-grid" *ngIf="bottleneckSummaryCards().length">
+          <article
+            class="bn-summary-card premium-card"
+            *ngFor="let c of bottleneckSummaryCards()"
+            [ngClass]="'bn-sum--' + c.variant"
+          >
+            <div class="bn-sum-head">
+              <div class="bn-sum-icon" aria-hidden="true"></div>
+              <div class="bn-sum-head-text">
+                <h4>{{ c.title }}</h4>
+                <p class="bn-sum-count">
+                  <span class="bn-sum-num mono-nums">{{ c.count }}</span>
+                  <span class="bn-sum-unit">tickets</span>
+                </p>
+              </div>
+            </div>
+            <p class="bn-sum-impact">{{ c.impact }}</p>
+            <div class="bn-sum-fixbox">
+              <span class="bn-sum-fix-label">Suggested fix</span>
+              <p class="bn-sum-fix-text">{{ c.fix }}</p>
+            </div>
+          </article>
+        </section>
 
-    <!-- Filters -->
-    <section class="card premium-card filters-card" *ngIf="tickets.length">
-      <button type="button" class="filters-toggle" (click)="filtersExpanded = !filtersExpanded">
-        <span>Filters</span>
-        <span class="filter-chip-count" *ngIf="activeFilterCount()">{{ activeFilterCount() }}</span>
-        <span class="chev">{{ filtersExpanded ? '▼' : '▶' }}</span>
-      </button>
-      <div class="filters-grid" *ngIf="filtersExpanded">
-        <div class="filter-col">
-          <span class="filter-heading">Status</span>
-          <label class="chk" *ngFor="let s of uniqueDisplayStatuses()">
-            <input type="checkbox" [checked]="isOn(filterStatuses, s)" (change)="toggleStatus(s)" />
-            {{ s }}
-          </label>
-        </div>
-        <div class="filter-col">
-          <span class="filter-heading">Priority</span>
-          <label class="chk" *ngFor="let p of uniquePrioritiesForFilter()">
-            <input type="checkbox" [checked]="isOn(filterPriorities, p)" (change)="togglePriority(p)" />
-            {{ p }}
-          </label>
-        </div>
-        <div class="filter-col">
-          <span class="filter-heading">Assignee</span>
-          <label class="chk" *ngFor="let a of uniqueAssignees()">
-            <input type="checkbox" [checked]="isOn(filterAssignees, a.value)" (change)="toggleAssignee(a.value)" />
-            {{ a.label }}
-          </label>
-        </div>
-        <div class="filter-col">
-          <span class="filter-heading">Risk</span>
-          <label class="chk"><input type="checkbox" [checked]="isOn(filterRisks, 'HIGH')" (change)="toggleRisk('HIGH')" /> High</label>
-          <label class="chk"><input type="checkbox" [checked]="isOn(filterRisks, 'MEDIUM')" (change)="toggleRisk('MEDIUM')" /> Medium</label>
-          <label class="chk"><input type="checkbox" [checked]="isOn(filterRisks, 'LOW')" (change)="toggleRisk('LOW')" /> Low</label>
-        </div>
-        <div class="filter-col">
-          <span class="filter-heading">Bottleneck</span>
-          <label class="chk" *ngFor="let b of uniqueBottlenecks()">
-            <input type="checkbox" [checked]="isOn(filterBottlenecks, b)" (change)="toggleBottleneck(b)" />
-            {{ b }}
-          </label>
-        </div>
-        <div class="filter-actions">
-          <button type="button" class="btn secondary sm" (click)="clearFilters()">Clear all</button>
-        </div>
-      </div>
-    </section>
+        <article class="insights-panel card premium-card" *ngIf="projectSummary">
+          <header class="insights-panel-head">
+            <div class="insights-panel-head-text">
+              <h3 class="insights-panel-title">Key insights</h3>
+              <p class="insights-panel-sub">Signals from the current ticket scope, priorities, and bottleneck mix.</p>
+            </div>
+          </header>
+          <div class="insights-grid">
+            <div
+              *ngFor="let ins of keyInsightBlocks(); trackBy: trackInsight"
+              class="insight-card"
+              [ngClass]="'insight-card--' + ins.variant"
+            >
+              <div class="insight-card-top">
+                <span class="insight-card-label">{{ ins.label }}</span>
+                <span class="insight-card-metric mono-nums" *ngIf="ins.metric">{{ ins.metric }}</span>
+              </div>
+              <p class="insight-card-body">{{ ins.body }}</p>
+            </div>
+          </div>
+          <section class="insights-narrative" *ngIf="showPortfolioNarrative()">
+            <h4 class="insights-narrative-title">Portfolio narrative</h4>
+            <p class="insights-narrative-text">{{ projectSummary.reasonForStatus }}</p>
+          </section>
+        </article>
+      </ng-container>
 
-    <!-- Delivery queue -->
-    <section class="card premium-card tickets-board">
-      <div class="tickets-head">
-        <h2 class="panel-title">Delivery queue</h2>
-        <div class="tickets-head-row">
-          <label *ngIf="!sidebarOverridesGroup()">
-            <span class="lbl">Group by</span>
-            <select [(ngModel)]="groupByMode" class="sel premium-input">
-              <option value="delivery">Delivery health</option>
-              <option value="priority">Priority</option>
-              <option value="assignee">Assignee</option>
-              <option value="status">Status</option>
-              <option value="risk">Risk</option>
-              <option value="bottleneck">Bottleneck</option>
-            </select>
-          </label>
-          <p class="sidebar-hint muted" *ngIf="sidebarOverridesGroup()">Grouped by sidebar: {{ dash.sidebarSection() }}</p>
-          <button type="button" class="btn secondary sm" (click)="clearFilters()">Clear filters</button>
+      <ng-container *ngIf="dash.sidebarSection() === 'tickets'">
+        <header class="view-header tickets-view-header">
+          <h1 class="view-title">Loan delivery tickets</h1>
+          <p class="view-sub">Use filters to narrow the list — assignee, priority, status, risk, bottleneck theme.</p>
+        </header>
+
+        <section class="filters-bar card premium-card filters-bar-tickets" *ngIf="tickets.length">
+          <div class="filters-bar-row">
+            <label class="filter-field">
+              <span class="filter-field-label">Assignee</span>
+              <select class="filter-select" [(ngModel)]="filterAssigneeKey">
+                <option [ngValue]="''">All assignees</option>
+                <option *ngFor="let a of uniqueAssignees(); trackBy: trackAssigneeFilterOpt" [ngValue]="a.value">{{ a.label }}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span class="filter-field-label">Priority</span>
+              <select class="filter-select" [(ngModel)]="filterPriorityKey">
+                <option [ngValue]="''">All priorities</option>
+                <option *ngFor="let p of uniquePrioritiesForFilter()" [ngValue]="p">{{ p }}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span class="filter-field-label">Status</span>
+              <select class="filter-select" [(ngModel)]="filterStatusKey">
+                <option [ngValue]="''">All statuses</option>
+                <option *ngFor="let s of uniqueDisplayStatuses()" [ngValue]="s">{{ s }}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span class="filter-field-label">Risk</span>
+              <select class="filter-select" [(ngModel)]="filterRiskKey">
+                <option [ngValue]="''">All risk levels</option>
+                <option *ngFor="let r of uniqueRiskLevels()" [ngValue]="r">{{ r }}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span class="filter-field-label">Bottleneck</span>
+              <select class="filter-select" [(ngModel)]="filterBottleneckKey">
+                <option [ngValue]="''">All themes</option>
+                <option *ngFor="let b of uniqueBottleneckBucketsForFilter(); trackBy: trackBottleneckFilterOpt" [ngValue]="b.value">{{ b.label }}</option>
+              </select>
+            </label>
+            <button type="button" class="btn secondary sm filter-clear-all" (click)="clearFilters()">Clear all</button>
+            <span class="filter-active-pill" *ngIf="activeFilterCount()">{{ activeFilterCount() }} active</span>
+          </div>
+        </section>
+
+        <div *ngIf="loading && !tickets.length" class="skeleton-table" aria-hidden="true">
+          <div class="skeleton-row" *ngFor="let _ of skeletonRows"></div>
         </div>
-      </div>
+        <p class="muted" *ngIf="!tickets.length && !loading">No tickets in this view.</p>
 
-      <p class="muted" *ngIf="!tickets.length && !loading">No tickets in this view.</p>
-      <div *ngIf="loading && !tickets.length" class="skeleton-table" aria-hidden="true">
-        <div class="skeleton-row" *ngFor="let _ of skeletonRows"></div>
-      </div>
-      <div *ngIf="loading && !tickets.length" class="muted skeleton-caption">Loading…</div>
+        <div class="risk-card-row ticket-grid">
+          <article
+            *ngFor="let t of ticketsForListView()"
+            class="risk-ticket-card premium-card interactive"
+            [id]="'ticket-card-' + t.id"
+            [ngClass]="riskPillClass(t)"
+            (click)="openTicketPanel(t)"
+            role="button"
+            tabindex="0"
+            (keydown.enter)="openTicketPanel(t)"
+          >
+            <div class="risk-card-top">
+              <span class="tc-risk-pill sm" [ngClass]="riskPillClass(t)">{{ riskLabel(t) }}</span>
+              <span class="mono risk-card-id">{{ t.id }}</span>
+              <span [class]="priorityPillClass(t)">{{ priorityLabel(t) }}</span>
+            </div>
+            <h3 class="risk-card-title">{{ ticketTitle(t) }}</h3>
+            <p class="ticket-bn muted">{{ bottleneckLine(t) }}</p>
+            <div class="git-strip" *ngIf="gitStripVisible(t)" aria-label="Change activity">
+              <div class="git-strip-line">
+                <span class="git-k">Change request</span>
+                <span class="git-v">{{ gitPrLabel(t) }}</span>
+              </div>
+              <div class="git-strip-line">
+                <span class="git-k">Commits</span>
+                <span class="git-v mono-nums">{{ t.commitCount ?? 0 }}</span>
+              </div>
+            </div>
+            <p class="risk-field">
+              <span class="risk-field-label">Signal</span>
+              {{ ticketRiskReason(t) }}
+            </p>
+            <div class="risk-card-actions" (click)="$event.stopPropagation()">
+              <button type="button" class="btn btn-send-update gradient-outline" (click)="sendToTeams(t)" [disabled]="isNotifying(t.id)">
+                {{ isNotifying(t.id) ? 'Sending…' : 'Send update' }}
+              </button>
+            </div>
+          </article>
+        </div>
+        <p class="muted pad" *ngIf="tickets.length && !ticketsForListView().length">No tickets match the current filters.</p>
+      </ng-container>
 
-      <ng-container *ngIf="groupsForDisplay().length || (!loading && tickets.length)">
-        <div class="group-block" *ngFor="let g of groupsForDisplay()">
-          <h3 class="group-h">{{ g.title }} <span class="group-count">({{ g.tickets.length }})</span></h3>
-          <div class="ticket-card-grid" *ngIf="g.tickets.length">
+      <ng-container *ngIf="dash.sidebarSection() === 'bottlenecks'">
+        <header class="view-header bottleneck-view-header">
+          <h1 class="view-title">Bottleneck analysis</h1>
+          <p class="view-sub">Thematic grouping — contribution % is share of tickets in scope that map to a bottleneck theme.</p>
+        </header>
+
+        <section class="filters-bar card premium-card filters-bar-bn" *ngIf="tickets.length">
+          <div class="filters-bar-row">
+            <label class="filter-field">
+              <span class="filter-field-label">Assignee</span>
+              <select class="filter-select" [(ngModel)]="filterAssigneeKey">
+                <option [ngValue]="''">All assignees</option>
+                <option *ngFor="let a of uniqueAssignees(); trackBy: trackAssigneeFilterOpt" [ngValue]="a.value">{{ a.label }}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span class="filter-field-label">Priority</span>
+              <select class="filter-select" [(ngModel)]="filterPriorityKey">
+                <option [ngValue]="''">All priorities</option>
+                <option *ngFor="let p of uniquePrioritiesForFilter()" [ngValue]="p">{{ p }}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span class="filter-field-label">Status</span>
+              <select class="filter-select" [(ngModel)]="filterStatusKey">
+                <option [ngValue]="''">All statuses</option>
+                <option *ngFor="let s of uniqueDisplayStatuses()" [ngValue]="s">{{ s }}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span class="filter-field-label">Risk</span>
+              <select class="filter-select" [(ngModel)]="filterRiskKey">
+                <option [ngValue]="''">All risk levels</option>
+                <option *ngFor="let r of uniqueRiskLevels()" [ngValue]="r">{{ r }}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span class="filter-field-label">Bottleneck</span>
+              <select class="filter-select" [(ngModel)]="filterBottleneckKey">
+                <option [ngValue]="''">All themes</option>
+                <option *ngFor="let b of uniqueBottleneckBucketsForFilter(); trackBy: trackBottleneckFilterOpt" [ngValue]="b.value">{{ b.label }}</option>
+              </select>
+            </label>
+            <button type="button" class="btn secondary sm filter-clear-all" (click)="clearFilters()">Clear all</button>
+            <span class="filter-active-pill" *ngIf="activeFilterCount()">{{ activeFilterCount() }} active</span>
+          </div>
+        </section>
+
+        <section class="bn-dist card premium-card" *ngIf="bottleneckDistribution().length">
+          <h3 class="chart-card-title">Distribution</h3>
+          <div class="bn-bars">
+            <div class="bn-bar-item" *ngFor="let d of bottleneckDistribution()">
+              <div class="bn-bar-head">
+                <span>{{ d.bucket }}</span>
+                <span class="mono-nums">{{ d.pct }}%</span>
+              </div>
+              <div class="bn-bar-track"><div class="bn-bar-fill" [style.width.%]="d.pct"></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="bn-theme-block" *ngFor="let g of bottleneckViewGroups()">
+          <div class="bn-theme-head">
+            <h2 class="bn-theme-title">Bottleneck: {{ g.bucket }}</h2>
+            <p class="bn-theme-meta muted">{{ g.tickets.length }} tickets · {{ g.pct }}% of analyzed scope — {{ bottleneckBlurb(g.bucket) }}</p>
+          </div>
+          <div class="bn-scroll-row">
             <article
               *ngFor="let t of g.tickets"
-              class="ticket-card enterprise premium-card interactive"
-              [id]="'ticket-card-' + t.id"
-              [ngClass]="riskPillClass(t)"
+              class="bn-mini-card premium-card interactive"
               (click)="openTicketPanel(t)"
               role="button"
               tabindex="0"
               (keydown.enter)="openTicketPanel(t)"
             >
-              <div class="tc-top">
-                <div class="tc-id-block">
-                  <span class="tc-id mono">{{ t.id }}</span>
-                  <span [class]="priorityPillClass(t)">{{ priorityLabel(t) }}</span>
-                </div>
-                <div class="tc-risk-pill" [ngClass]="riskPillClass(t)">{{ riskLabel(t) }} risk</div>
-              </div>
-              <h3 class="tc-title">{{ ticketTitle(t) }}</h3>
-              <div class="tc-meta-grid">
-                <div><span class="tc-meta-k">Assignee</span> {{ displayAssignee(t) }}</div>
-                <div><span class="tc-meta-k">Status</span> {{ displayStatus(t) }}</div>
-              </div>
-              <div class="tc-badge-row">
-                <span class="time-badge" *ngIf="t.timeInStatusLabel">⏱ {{ t.timeInStatusLabel }}</span>
-                <span class="time-badge ghost" *ngIf="!t.timeInStatusLabel">{{ t.timeInState }}h in status</span>
-                <span class="time-badge subtle" *ngIf="t.lastActivityLabel">Updated {{ t.lastActivityLabel }}</span>
-              </div>
-              <div class="tc-flags" *ngIf="ticketFlagCodes(t).length">
-                <span *ngFor="let f of ticketFlagCodes(t)" class="flag-tag" [attr.title]="flagChipMeta(f).label">{{ flagTagLabel(f) }}</span>
-              </div>
-              <div class="tc-ai-snips">
-                <div class="tc-snip">
-                  <span class="tc-snip-label">Root cause</span>
-                  <p>{{ rootCauseShort(t) }}</p>
-                </div>
-                <div class="tc-snip">
-                  <span class="tc-snip-label">Action</span>
-                  <p>{{ actionShort(t) }}</p>
-                </div>
-              </div>
-              <div class="tc-notify-row" (click)="$event.stopPropagation()">
-                <button
-                  type="button"
-                  class="btn btn-send-update gradient-outline"
-                  (click)="sendToTeams(t)"
-                  [disabled]="isNotifying(t.id)"
-                  title="Send AI-generated update"
-                >
-                  {{ isNotifying(t.id) ? 'Sending…' : 'Send Update' }}
-                </button>
-                <span class="tc-last-sent">Last notified: <strong>{{ formatLastNotified(t.lastNotifiedAt) }}</strong></span>
-              </div>
+              <span class="mono">{{ t.id }}</span>
+              <span class="bn-mini-assignee">{{ displayAssignee(t) }}</span>
+              <span class="bn-mini-git mono-nums" *ngIf="t.branchName">🧾 {{ t.commitCount ?? 0 }} · 🔀 {{ gitPrLabel(t) }}</span>
+              <span class="bn-mini-time mono-nums">{{ ticketCompactTime(t) }}</span>
             </article>
           </div>
-        </div>
-        <p *ngIf="!groupsForDisplay().length && tickets.length" class="muted">No tickets match the current filters.</p>
+        </section>
+        <p class="muted pad" *ngIf="tickets.length && !bottleneckViewGroups().length">No bottleneck themes in the current filter scope.</p>
       </ng-container>
-    </section>
-
-    <section class="card muted-hint premium-card" *ngIf="tickets.length && !insightTickets().length && !loading">
-      <p>
-        Run the agent to generate full AI fields for <strong>MEDIUM</strong> and <strong>HIGH</strong> severity items — open the
-        <strong>Insights</strong> tab after a run.
-      </p>
-    </section>
+    </div>
   </div>
 
-  <!-- —— Insights tab —— -->
-  <div class="tab-panel-animate" *ngIf="dash.activeTab() === 'insights'">
-    <section class="card premium-card insight-panel" *ngIf="projectSummary">
-      <h2 class="panel-title gradient-text">AI portfolio insight</h2>
-      <div class="insight-columns">
-        <div class="insight-col glass">
-          <h3 class="insight-col-title">{{ whyPortfolioHeading() }}</h3>
-          <p class="insight-lead" *ngIf="projectSummary.reasonForStatus">{{ projectSummary.reasonForStatus }}</p>
-          <p class="insight-lead muted" *ngIf="parsePortfolioRead().lead">{{ parsePortfolioRead().lead }}</p>
-          <ul class="insight-bullets">
-            <li *ngFor="let b of portfolioWhyBullets()">{{ b }}</li>
-          </ul>
-        </div>
-        <div class="insight-col glass">
-          <h3 class="insight-col-title">Key risks</h3>
-          <ul class="insight-bullets">
-            <li *ngFor="let b of portfolioRiskBullets()">{{ b }}</li>
-          </ul>
-        </div>
-        <div class="insight-col glass">
-          <h3 class="insight-col-title">Recommended actions</h3>
-          <ul class="insight-bullets">
-            <li *ngFor="let b of portfolioActionBullets()">{{ b }}</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <section class="insights-cards" *ngIf="insightTickets().length">
-      <article *ngFor="let t of insightTickets()" class="insight-clean-card premium-card">
-        <div class="icc-head">
-          <span class="mono">{{ t.id }}</span>
-          <span class="sev-pill" [ngClass]="severityClass(t.severity)">{{ t.severity }}</span>
-        </div>
-        <p class="icc-insight">{{ t.insight || t.reasoning || t.rootCause || '—' }}</p>
-        <p class="icc-meta muted">{{ displayStatus(t) }} · {{ riskLabel(t) }} risk</p>
-      </article>
-    </section>
-
-    <section class="card premium-card detail-insights" *ngIf="insightTickets().length">
-      <h2 class="panel-title">Structured ticket insight</h2>
-      <p class="muted panel-sub">Expand for full breakdown.</p>
-      <div class="insight-grid">
-        <details *ngFor="let t of insightTickets()" class="insight-details">
-          <summary class="insight-summary">
-            <span class="mono">{{ t.id }}</span>
-            <span class="sep">·</span>
-            {{ displayStatus(t) }}
-            <span class="sev-pill" [ngClass]="severityClass(t.severity)">{{ t.severity }}</span>
-          </summary>
-          <article class="insight-body">
-            <div class="field" *ngIf="t.reasoning">
-              <span class="label">Reading of the signals</span>
-              <p>{{ t.reasoning }}</p>
-            </div>
-            <div class="field root">
-              <span class="label">What is wrong</span>
-              <p>{{ t.rootCause || '—' }}</p>
-            </div>
-            <div class="field">
-              <span class="label">Why it matters</span>
-              <p>{{ t.impact || '—' }}</p>
-            </div>
-            <div class="field">
-              <span class="label">What to do next</span>
-              <p>{{ t.recommendedAction || '—' }}</p>
-            </div>
-            <div class="field full" *ngIf="t.insight">
-              <span class="label">Full summary</span>
-              <p>{{ t.insight }}</p>
-            </div>
-            <div class="insight-actions">
-              <button type="button" class="btn btn-send-update" (click)="sendToTeams(t)" [disabled]="isNotifying(t.id)" title="Send AI-generated update">
-                {{ isNotifying(t.id) ? 'Sending…' : 'Send Update' }}
-              </button>
-              <span class="muted small">Last notified: {{ formatLastNotified(t.lastNotifiedAt) }}</span>
-            </div>
-          </article>
-        </details>
-      </div>
-    </section>
-
-    <p class="muted pad" *ngIf="projectSummary && !insightTickets().length">Run the agent to populate ticket-level AI insight cards.</p>
-  </div>
-
-  <!-- —— Suggestions tab —— -->
-  <div class="tab-panel-animate" *ngIf="dash.activeTab() === 'suggestions'">
-    <section class="card premium-card" *ngIf="suggestionsTop().length">
-      <h2 class="panel-title gradient-text">Curated actions</h2>
-      <p class="muted panel-sub">Top outreach candidates — review before sending.</p>
-      <ul class="suggestions-list premium">
-        <li *ngFor="let s of suggestionsTop()" class="suggestion-row">
-          <div class="suggestion-main">
-            <span class="mono suggestion-id">{{ s.ticketId }}</span>
-            <p class="suggestion-reason">{{ s.reason }}</p>
-            <p class="suggestion-action muted">{{ s.recommendedAction }}</p>
-          </div>
-          <button type="button" class="btn secondary suggestion-btn" (click)="reviewAndSend(s)">Review &amp; send</button>
-        </li>
-      </ul>
-    </section>
-    <p class="muted pad" *ngIf="!suggestionsTop().length">No suggestions yet — run the agent or refresh.</p>
-  </div>
-
-  <!-- —— Notifications tab —— -->
-  <div class="tab-panel-animate" *ngIf="dash.activeTab() === 'notifications'">
-    <section class="card premium-card notif-tab">
-      <h2 class="panel-title">Notification history</h2>
-      <p class="muted last-global">Last message sent (any ticket): <strong>{{ lastNotifyGlobally() }}</strong></p>
-      <div class="notif-table-wrap" *ngIf="notificationsHistoryRows().length; else noHist">
-        <table class="notif-table">
-          <thead>
-            <tr>
-              <th>Ticket</th>
-              <th>Title</th>
-              <th>Last notified</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let r of notificationsHistoryRows()">
-              <td class="mono">{{ r.ticketId }}</td>
-              <td>{{ r.title }}</td>
-              <td>{{ r.at ? (r.at | date : 'medium') : '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <ng-template #noHist>
-        <p class="muted">No Teams notifications recorded yet.</p>
-      </ng-template>
-    </section>
-  </div>
-
-  <!-- Ticket side panel -->
   <div class="panel-backdrop" *ngIf="selectedTicket" (click)="closeTicketPanel()"></div>
   <aside class="ticket-side-panel premium-card" *ngIf="selectedTicket; let t" role="dialog" aria-modal="true">
     <button type="button" class="panel-close" (click)="closeTicketPanel()" aria-label="Close">✕</button>
@@ -461,6 +390,36 @@
           <dd>{{ bottleneckLine(t) }}</dd>
         </dl>
       </section>
+      <section class="panel-section git-panel" *ngIf="gitStripVisible(t)">
+        <h4>Git &amp; release</h4>
+        <dl class="metric-dl git-dl">
+          <dt>🌿 Branch</dt>
+          <dd class="mono wrap">{{ t.branchName || '—' }}</dd>
+          <dt>🧾 Commits</dt>
+          <dd class="mono-nums">{{ t.commitCount ?? 0 }}</dd>
+          <dt>🔀 Pull request</dt>
+          <dd>
+            <span class="mono-nums">{{ gitPrLabel(t) }}</span>
+            <ng-container *ngIf="t.prTitle"><br /><span class="pr-title">{{ t.prTitle }}</span></ng-container>
+            <ng-container *ngIf="t.prLink">
+              <br /><a class="pr-link" [href]="t.prLink" target="_blank" rel="noopener noreferrer">{{ t.prLink }}</a>
+            </ng-container>
+          </dd>
+          <dt>🚀 Deployment</dt>
+          <dd>
+            {{ gitDeployLine(t) }}
+            <ng-container *ngIf="t.deployedAt && t.deployed">
+              <br /><span class="muted small">{{ t.deployedAt | date : 'medium' }}</span>
+            </ng-container>
+          </dd>
+        </dl>
+        <div class="commit-list-wrap" *ngIf="t.commitMessages?.length">
+          <p class="commit-list-label">Commit messages</p>
+          <ul class="commit-list">
+            <li *ngFor="let c of t.commitMessages" class="mono">{{ c }}</li>
+          </ul>
+        </div>
+      </section>
       <section class="panel-section">
         <h4>Timeline</h4>
         <ul class="timeline-simple">
@@ -473,18 +432,48 @@
         <h4>AI insight</h4>
         <p class="panel-prose">{{ t.insight || t.reasoning || '—' }}</p>
         <div class="field" *ngIf="t.rootCause">
-          <span class="label">Root cause</span>
+          <span class="label">Narrative (AI / local)</span>
           <p>{{ t.rootCause }}</p>
         </div>
+        <div class="field" *ngIf="t.rootCauseAnalysis?.primaryCause">
+          <span class="label">Primary bottleneck (engine)</span>
+          <p>{{ t.rootCauseAnalysis?.primaryCause }} ({{ t.rootCauseAnalysis?.confidence }})</p>
+        </div>
+        <div class="field" *ngIf="t.rootCauseAnalysis?.reasons?.length">
+          <span class="label">Signals</span>
+          <ul class="explain-list">
+            <li *ngFor="let r of t.rootCauseAnalysis?.reasons">{{ r }}</li>
+          </ul>
+        </div>
         <div class="field" *ngIf="t.recommendedAction">
-          <span class="label">Action</span>
+          <span class="label">Recommended action</span>
           <p>{{ t.recommendedAction }}</p>
+          <p class="muted small" *ngIf="t.actionOwner">Owner focus: {{ t.actionOwner }}</p>
+        </div>
+        <div class="explain-block" *ngIf="showExplainability && (t.explainabilityFactors?.length ?? 0) > 0">
+          <h4 class="explain-title">Why this insight?</h4>
+          <ul class="explain-list">
+            <li *ngFor="let f of t.explainabilityFactors">{{ f }}</li>
+          </ul>
         </div>
       </section>
       <footer class="panel-footer">
-        <button type="button" class="btn btn-send-update gradient-outline" (click)="sendToTeams(t)" [disabled]="isNotifying(t.id)" title="Send AI-generated update">
-          {{ isNotifying(t.id) ? 'Sending…' : 'Send Update' }}
-        </button>
+        <div class="panel-footer-actions">
+          <button type="button" class="btn secondary sm" (click)="toggleExplainability()" *ngIf="t.explainabilityFactors?.length">
+            {{ showExplainability ? 'Hide' : 'Why this insight?' }}
+          </button>
+          <button
+            type="button"
+            class="btn primary sm"
+            *ngIf="t.recommendedAction"
+            (click)="copyTicketAction(t); $event.stopPropagation()"
+          >
+            Take action
+          </button>
+          <button type="button" class="btn btn-send-update gradient-outline" (click)="sendToTeams(t)" [disabled]="isNotifying(t.id)" title="Send AI-generated update">
+            {{ isNotifying(t.id) ? 'Sending…' : 'Send Update' }}
+          </button>
+        </div>
         <span class="muted small">Last notified: {{ formatLastNotified(t.lastNotifiedAt) }}</span>
       </footer>
     </div>

@@ -1,9 +1,9 @@
-import { CommonModule } from '@angular/common';
-import { Component, HostListener } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
+import { CommonModule, NgSwitch, NgSwitchCase } from '@angular/common';
+import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { filter, Subscription } from 'rxjs';
 import {
   DashboardStateService,
-  MainTab,
   SidebarSection,
 } from '../../services/dashboard-state.service';
 import { ThemeService } from '../../services/theme.service';
@@ -12,42 +12,76 @@ import { AuthService } from '../../services/auth.service';
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [CommonModule, RouterOutlet],
+  imports: [CommonModule, RouterOutlet, NgSwitch, NgSwitchCase],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.css',
 })
-export class ShellComponent {
-  readonly tabs: { id: MainTab; label: string }[] = [
-    { id: 'dashboard', label: 'Dashboard' },
-    { id: 'insights', label: 'Insights' },
-    { id: 'suggestions', label: 'Suggestions' },
-    { id: 'notifications', label: 'Notifications' },
-  ];
-
-  readonly sidebarItems: { id: SidebarSection; label: string; icon: string }[] = [
-    { id: 'overview', label: 'Overview', icon: '◇' },
-    { id: 'risk', label: 'Risk View', icon: '⚑' },
-    { id: 'bottlenecks', label: 'Bottlenecks', icon: '◎' },
-    { id: 'team', label: 'Team View', icon: '◉' },
-    { id: 'history', label: 'Run History', icon: '↻' },
+export class ShellComponent implements OnInit, OnDestroy {
+  readonly sidebarItems: { id: SidebarSection; label: string; route: string | null }[] = [
+    { id: 'overview', label: 'Overview', route: null },
+    { id: 'tickets', label: 'Jira Tickets', route: 'tickets' },
+    { id: 'bottlenecks', label: 'Bottlenecks', route: 'bottlenecks' },
+    { id: 'team-analytics', label: 'Git Analytics', route: 'team' },
+    { id: 'ai-agent', label: 'AI Agent', route: 'agent' },
   ];
 
   userMenuOpen = false;
   notifOpen = false;
+  private navSub?: Subscription;
 
   constructor(
     readonly dash: DashboardStateService,
     readonly theme: ThemeService,
     private readonly auth: AuthService,
     private readonly router: Router,
+    private readonly route: ActivatedRoute,
   ) {}
 
-  selectTab(t: MainTab): void {
-    this.dash.setTab(t);
+  ngOnInit(): void {
+    this.syncSidebarFromUrl(this.router.url);
+    this.navSub = this.router.events
+      .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
+      .subscribe((e) => this.syncSidebarFromUrl(e.urlAfterRedirects));
+  }
+
+  ngOnDestroy(): void {
+    this.navSub?.unsubscribe();
+  }
+
+  private syncSidebarFromUrl(url: string): void {
+    const path = url.split('?')[0]?.replace(/\/$/, '') ?? '';
+    const segments = path.split('/').filter(Boolean);
+    const last = segments[segments.length - 1] ?? '';
+
+    if (last === 'tickets') {
+      this.dash.setSidebarSection('tickets');
+      return;
+    }
+    if (last === 'bottlenecks') {
+      this.dash.setSidebarSection('bottlenecks');
+      return;
+    }
+    if (last === 'team') {
+      this.dash.setSidebarSection('team-analytics');
+      return;
+    }
+    if (last === 'agent') {
+      this.dash.setSidebarSection('ai-agent');
+      return;
+    }
+    if (!last || last === '') {
+      this.dash.setSidebarSection('overview');
+    }
   }
 
   selectSidebar(s: SidebarSection): void {
+    const item = this.sidebarItems.find((i) => i.id === s);
     this.dash.setSidebarSection(s);
+    if (item?.route) {
+      void this.router.navigate([item.route], { relativeTo: this.route });
+      return;
+    }
+    void this.router.navigate([''], { relativeTo: this.route });
   }
 
   toggleTheme(): void {
@@ -67,11 +101,32 @@ export class ShellComponent {
     }
   }
 
+  mainWorkspaceClass(): string {
+    const s = this.dash.sidebarSection();
+    if (s === 'team-analytics') {
+      return 'ws-team-analytics';
+    }
+    if (s === 'ai-agent') {
+      return 'ws-ai-agent';
+    }
+    return 'ws-' + s;
+  }
+
   toggleNotifDropdown(): void {
     this.notifOpen = !this.notifOpen;
     if (this.notifOpen) {
       this.userMenuOpen = false;
     }
+  }
+
+  dismissPending(ticketId: string, ev: MouseEvent): void {
+    ev.stopPropagation();
+    this.dash.removePendingAction(ticketId);
+  }
+
+  dismissNotified(ticketId: string, ev: MouseEvent): void {
+    ev.stopPropagation();
+    this.dash.removeNotifiedPreview(ticketId);
   }
 
   @HostListener('document:click', ['$event'])

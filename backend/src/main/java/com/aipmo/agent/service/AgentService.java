@@ -30,7 +30,7 @@ public class AgentService {
 
     private final TicketDataService ticketDataService;
     private final MetricsService metricsService;
-    private final LocalAIService localAIService;
+    private final GroqInsightService groqInsightService;
     private final AgentResultStore agentResultStore;
     private final ProjectSummaryService projectSummaryService;
     private final AiAnalysisCache aiAnalysisCache;
@@ -41,7 +41,7 @@ public class AgentService {
     public AgentService(
             TicketDataService ticketDataService,
             MetricsService metricsService,
-            LocalAIService localAIService,
+            GroqInsightService groqInsightService,
             AgentResultStore agentResultStore,
             ProjectSummaryService projectSummaryService,
             AiAnalysisCache aiAnalysisCache,
@@ -50,7 +50,7 @@ public class AgentService {
             NotifyStateStore notifyStateStore) {
         this.ticketDataService = ticketDataService;
         this.metricsService = metricsService;
-        this.localAIService = localAIService;
+        this.groqInsightService = groqInsightService;
         this.agentResultStore = agentResultStore;
         this.projectSummaryService = projectSummaryService;
         this.aiAnalysisCache = aiAnalysisCache;
@@ -125,12 +125,15 @@ public class AgentService {
                 } else {
                     log.info("Generating AI insight for ticketId={}", ticket.getId());
                     long insightT0 = System.currentTimeMillis();
-                    insightOutcome = localAIService.generateStructuredInsight(ticket);
+                    insightOutcome = groqInsightService.generateStructuredInsight(ticket);
                     long insightMs = System.currentTimeMillis() - insightT0;
                     insight = insightOutcome.insight();
+                    boolean fromGroq =
+                            insightOutcome != null && !insightOutcome.fromLocalHeuristicEngine();
                     log.info(
-                            "Insight generated (local engine) ticketId={} cached=false insightMs={} status=SUCCESS",
+                            "Insight generated ticketId={} source={} cached=false insightMs={} status=SUCCESS",
                             ticket.getId(),
+                            fromGroq ? "GROQ" : "LOCAL",
                             insightMs);
 
                     aiAnalysisCache.put(cacheKey, insight);
@@ -181,13 +184,32 @@ public class AgentService {
                                 .branchName(ticket.getBranchName())
                                 .lastCommitAt(ticket.getLastCommitAt())
                                 .prAuthor(ticket.getPrAuthor())
+                                .commitMessages(
+                                        ticket.getCommitMessages() != null
+                                                ? new ArrayList<>(ticket.getCommitMessages())
+                                                : new ArrayList<>())
+                                .prTitle(ticket.getPrTitle())
+                                .prLink(ticket.getPrLink())
+                                .commitCount(ticket.getCommitCount())
+                                .deploymentTag(ticket.getDeploymentTag())
+                                .deployed(ticket.isDeployed())
+                                .deployedAt(ticket.getDeployedAt())
+                                .deployEnvironment(ticket.getDeployEnvironment())
+                                .prAgeHours(ticket.getPrAgeHours())
+                                .reviewerDelayHours(ticket.getReviewerDelayHours())
                                 .flags(new ArrayList<>(ticket.getFlags()))
                                 .insight(insightText)
                                 .nudge(nudge)
                                 .reasoning(forUi.getReasoning())
                                 .rootCause(forUi.getRootCause())
+                                .rootCauseAnalysis(ticket.getRootCauseAnalysis())
+                                .explainabilityFactors(
+                                        ticket.getExplainabilityFactors() != null
+                                                ? new ArrayList<>(ticket.getExplainabilityFactors())
+                                                : new ArrayList<>())
                                 .impact(forUi.getImpact())
-                                .recommendedAction(forUi.getRecommendedAction())
+                                .recommendedAction(ticket.getRecommendedAction())
+                                .actionOwner(ticket.getActionOwner())
                                 .severity(ticket.getSeverity())
                                 .trendIndicator(ticket.getTrendIndicator())
                                 .confidence(forUi.getConfidence())
@@ -297,9 +319,31 @@ public class AgentService {
                 .branchName(ticket.getBranchName())
                 .lastCommitAt(ticket.getLastCommitAt())
                 .prAuthor(ticket.getPrAuthor())
+                .commitMessages(
+                        ticket.getCommitMessages() != null
+                                ? new ArrayList<>(ticket.getCommitMessages())
+                                : new ArrayList<>())
+                .prTitle(ticket.getPrTitle())
+                .prLink(ticket.getPrLink())
+                .commitCount(ticket.getCommitCount())
+                .deploymentTag(ticket.getDeploymentTag())
+                .deployed(ticket.isDeployed())
+                .deployedAt(ticket.getDeployedAt())
+                .deployEnvironment(ticket.getDeployEnvironment())
+                .prAgeHours(ticket.getPrAgeHours())
+                .reviewerDelayHours(ticket.getReviewerDelayHours())
                 .flags(ticket.getFlags() != null ? new ArrayList<>(ticket.getFlags()) : new ArrayList<>())
+                .rootCause(ticket.getRootCause())
+                .rootCauseAnalysis(ticket.getRootCauseAnalysis())
+                .explainabilityFactors(
+                        ticket.getExplainabilityFactors() != null
+                                ? new ArrayList<>(ticket.getExplainabilityFactors())
+                                : new ArrayList<>())
+                .recommendedAction(ticket.getRecommendedAction())
+                .actionOwner(ticket.getActionOwner())
                 .severity(ticket.getSeverity())
                 .trendIndicator(ticket.getTrendIndicator())
+                .confidence(ticket.getConfidence())
                 .lastUpdated(ticket.getLastUpdated())
                 .dataQuality(ticket.getDataQuality() != null ? ticket.getDataQuality() : DataQuality.MOCK)
                 .jiraDataAvailable(ticket.isJiraDataAvailable())

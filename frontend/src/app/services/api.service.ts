@@ -1,10 +1,18 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 export type ProjectStatus = 'RED' | 'AMBER' | 'GREEN';
 
 export type DataQuality = 'HIGH' | 'PARTIAL' | 'MOCK';
+
+/** Standard API envelope from the backend. */
+export interface ApiEnvelope<T> {
+  success: boolean;
+  data: T | null;
+  error: { message: string; status: number } | null;
+}
 
 export interface ProjectSummary {
   totalTickets: number;
@@ -12,24 +20,18 @@ export interface ProjectSummary {
   criticalTickets: number;
   topBottleneck: string;
   status: ProjectStatus;
-  /** HIGH | MEDIUM | LOW — aligned with RED / AMBER / GREEN. */
   portfolioDeliveryRisk?: string | null;
   prDelayTrendPercent: number | null;
   estimatedDelayDays: number | null;
-  /** Run-over-run or baseline narrative */
   trendSummary?: string | null;
-  /** Plain-language explanation for RED/AMBER/GREEN */
   reasonForStatus?: string | null;
-  /** Executive narrative with bullet-style lines (newlines). */
   projectRiskSummary?: string | null;
-  /** Lightweight delivery forecast when many tickets show long dwell. */
   deliveryInsight?: string | null;
   dataQuality?: DataQuality | null;
   prDataAvailable?: boolean;
   jiraDataAvailable?: boolean;
 }
 
-/** Counts for the “project health” summary strip. */
 export interface ProjectHealth {
   totalOpenTickets: number;
   highRiskCount: number;
@@ -39,39 +41,48 @@ export interface ProjectHealth {
   unassignedCount: number;
 }
 
+export type SimulationScenarioTier = 'GREEN' | 'AMBER' | 'RED';
+
+export interface RootCauseAnalysis {
+  reasons: string[];
+  primaryCause: string;
+  confidence: string;
+}
+
 export interface Ticket {
   id: string;
-  /** Issue title */
   summary?: string | null;
   status: string;
   statusCategory?: string | null;
   displayStatus?: string | null;
   createdAt?: string | null;
   jiraUpdatedAt?: string | null;
-  /** Friendly timing for UI */
   progressLabel?: string | null;
   flagSummary?: string | null;
   assignee?: string | null;
   priority?: string | null;
   bottleneckCategory?: string | null;
-  /** Capped hours in current status (backend) */
   timeInState: number;
   prTime: number;
-  /** NOT_CREATED | OPEN | IN_REVIEW | MERGED (simulation) */
   prStatus?: string | null;
-  /** NONE | API | DESIGN | EXTERNAL_TEAM (simulation) */
   dependency?: string | null;
-  /** Dev ↔ QA bounce count (simulation) */
   bounceCount?: number;
-  /** SIMPLE | MEDIUM | COMPLEX (simulation) */
   complexity?: string | null;
-  /** Synthetic PR number (demo GitHub placeholder) */
   prNumber?: number | null;
-  /** e.g. https://github.com/demo-org/aipmo-platform/pull/142 */
   prUrl?: string | null;
   branchName?: string | null;
   lastCommitAt?: string | null;
   prAuthor?: string | null;
+  commitMessages?: string[] | null;
+  prTitle?: string | null;
+  prLink?: string | null;
+  commitCount?: number;
+  deploymentTag?: string | null;
+  deployed?: boolean;
+  deployedAt?: string | null;
+  deployEnvironment?: string | null;
+  prAgeHours?: number | null;
+  reviewerDelayHours?: number | null;
   statusChanges?: number;
   pingPongTransitions?: number;
   flags: string[];
@@ -79,8 +90,11 @@ export interface Ticket {
   nudge?: string | null;
   reasoning?: string | null;
   rootCause?: string | null;
+  rootCauseAnalysis?: RootCauseAnalysis | null;
+  explainabilityFactors?: string[] | null;
   impact?: string | null;
   recommendedAction?: string | null;
+  actionOwner?: string | null;
   severity?: string | null;
   trendIndicator?: string | null;
   confidence?: string | null;
@@ -88,19 +102,12 @@ export interface Ticket {
   dataQuality?: DataQuality | null;
   jiraDataAvailable?: boolean;
   prDataAvailable?: boolean;
-  /** Normal | Watch | At Risk */
   agingBucket?: string | null;
-  /** User-facing risk from backend */
   deliveryRisk?: string | null;
-  /** Active | No Activity */
   movementStatus?: string | null;
-  /** e.g. "6 days" */
   timeInStatusLabel?: string | null;
-  /** e.g. "2 days ago" */
   lastActivityLabel?: string | null;
-  /** UNASSIGNED | BLOCKED | AT_RISK | HEALTHY */
   viewGroup?: string | null;
-  /** ISO timestamp after manual Teams notify */
   lastNotifiedAt?: string | null;
 }
 
@@ -110,8 +117,8 @@ export interface ManualNotifyResponse {
   assignee: string;
   messagePreview: string | null;
   lastNotifiedAt?: string | null;
-  /** Set when status is skipped (e.g. notify cooldown). */
   reason?: string | null;
+  messageSource?: string | null;
 }
 
 export interface TicketSuggestion {
@@ -124,9 +131,7 @@ export interface AgentRunResponse {
   tickets: Ticket[];
   projectSummary: ProjectSummary | null;
   projectHealth: ProjectHealth | null;
-  /** Always true — synthetic dataset only. */
   simulation?: boolean;
-  /** ISO-8601 when this snapshot was built. */
   generatedAt?: string | null;
 }
 
@@ -141,6 +146,86 @@ export interface DeliveryTrend {
   snapshots: DeliveryTrendPoint[];
 }
 
+export interface TeamAnalyticsOverview {
+  totalTeamMembers: number;
+  totalActiveTickets: number;
+  completedTickets: number;
+  ticketsUnderReview: number;
+  avgTicketsPerDeveloper: number;
+}
+
+export interface TeamMemberAnalytics {
+  name: string;
+  experience?: string | null;
+  avatarHue: number;
+  totalTicketsAssigned: number;
+  completedTickets: number;
+  inProgress: number;
+  underReview: number;
+  blocked: number;
+  performanceLevel: string;
+  performanceLabel: string;
+  aiInsight: string;
+}
+
+export interface GitActivityPerMember {
+  assigneeName: string;
+  commitsPerDay: number;
+  commitsPerWeek: number;
+  commitsPerMonth: number;
+  prsCreated: number;
+  prsMerged: number;
+  avgPrReviewTimeHours: number;
+  totalCommits: number;
+}
+
+export interface CommitsTimeSeriesPoint {
+  date: string;
+  commits: number;
+}
+
+export interface WorkloadBar {
+  assigneeName: string;
+  activeTicketCount: number;
+  highlight: string;
+}
+
+export interface TeamAnalyticsResponse {
+  overview: TeamAnalyticsOverview;
+  members: TeamMemberAnalytics[];
+  gitActivityByMember: GitActivityPerMember[];
+  commitsOverTime: CommitsTimeSeriesPoint[];
+  workloadByAssignee: WorkloadBar[];
+  generatedAt?: string | null;
+}
+
+export interface AgentChatResponse {
+  message: string;
+  bullets: string[];
+  referencedTicketIds: string[];
+  sessionId: string;
+  answerSource?: string | null;
+}
+
+export interface ChatSessionSummary {
+  sessionId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessageView {
+  role: string;
+  content: string;
+  timestamp: string;
+}
+
+export interface ChatHistoryResponse {
+  sessionId: string;
+  title: string;
+  messages: ChatMessageView[];
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -149,31 +234,177 @@ export class ApiService {
 
   constructor(private readonly http: HttpClient) {}
 
+  private unwrap<T>(fallback: T): (envelope: ApiEnvelope<T>) => T {
+    return (envelope) => {
+      if (!envelope.success) {
+        const msg = envelope.error?.message ?? 'Request failed';
+        throw new Error(msg);
+      }
+      const d = envelope.data;
+      return d != null ? d : fallback;
+    };
+  }
+
   getTickets(): Observable<Ticket[]> {
-    return this.http.get<Ticket[]>(`${this.base}/api/tickets`);
+    return this.http
+      .get<ApiEnvelope<Ticket[]>>(`${this.base}/api/tickets`)
+      .pipe(map(this.unwrap<Ticket[]>([])));
   }
 
   runAgent(): Observable<AgentRunResponse> {
-    return this.http.post<AgentRunResponse>(`${this.base}/api/run-agent`, {});
+    return this.http
+      .post<ApiEnvelope<AgentRunResponse>>(`${this.base}/api/run-agent`, {})
+      .pipe(
+        map(
+          this.unwrap<AgentRunResponse>({
+            tickets: [],
+            projectSummary: null,
+            projectHealth: null,
+          }),
+        ),
+      );
   }
 
-  /** Baseline or last agent snapshot (includes project summary). */
   getInsights(): Observable<AgentRunResponse> {
-    return this.http.get<AgentRunResponse>(`${this.base}/api/insights`);
+    return this.http
+      .get<ApiEnvelope<AgentRunResponse>>(`${this.base}/api/insights`)
+      .pipe(
+        map(
+          this.unwrap<AgentRunResponse>({
+            tickets: [],
+            projectSummary: null,
+            projectHealth: null,
+          }),
+        ),
+      );
   }
 
-  /** Proactive hints from metrics + severity (no Teams send). */
   getSuggestions(): Observable<TicketSuggestion[]> {
-    return this.http.get<TicketSuggestion[]>(`${this.base}/api/suggestions`);
+    return this.http
+      .get<ApiEnvelope<TicketSuggestion[]>>(`${this.base}/api/suggestions`)
+      .pipe(map(this.unwrap<TicketSuggestion[]>([])));
   }
 
   notifyTicket(ticketId: string): Observable<ManualNotifyResponse> {
     const enc = encodeURIComponent(ticketId);
-    return this.http.post<ManualNotifyResponse>(`${this.base}/api/notify/${enc}`, {});
+    return this.http
+      .post<ApiEnvelope<ManualNotifyResponse>>(`${this.base}/api/notify/${enc}`, {})
+      .pipe(
+        map(
+          this.unwrap<ManualNotifyResponse>({
+            status: '',
+            ticketId: '',
+            assignee: '',
+            messagePreview: null,
+          }),
+        ),
+      );
   }
 
-  /** Run-over-run dwell/PR averages (after repeated Run Agent). */
   getDeliveryTrend(): Observable<DeliveryTrend> {
-    return this.http.get<DeliveryTrend>(`${this.base}/api/delivery-trend`);
+    return this.http
+      .get<ApiEnvelope<DeliveryTrend>>(`${this.base}/api/delivery-trend`)
+      .pipe(map(this.unwrap<DeliveryTrend>({ snapshots: [] })));
+  }
+
+  getTeamAnalytics(): Observable<TeamAnalyticsResponse> {
+    return this.http
+      .get<ApiEnvelope<TeamAnalyticsResponse>>(`${this.base}/api/team-analytics`)
+      .pipe(
+        map(
+          this.unwrap<TeamAnalyticsResponse>({
+            overview: {
+              totalTeamMembers: 0,
+              totalActiveTickets: 0,
+              completedTickets: 0,
+              ticketsUnderReview: 0,
+              avgTicketsPerDeveloper: 0,
+            },
+            members: [],
+            gitActivityByMember: [],
+            commitsOverTime: [],
+            workloadByAssignee: [],
+          }),
+        ),
+      );
+  }
+
+  postAgentChat(query: string, sessionId?: string | null): Observable<AgentChatResponse> {
+    return this.http
+      .post<ApiEnvelope<AgentChatResponse>>(`${this.base}/api/agent-chat`, {
+        query,
+        sessionId: sessionId ?? undefined,
+      })
+      .pipe(
+        map(
+          this.unwrap<AgentChatResponse>({
+            message: '',
+            bullets: [],
+            referencedTicketIds: [],
+            sessionId: sessionId ?? '',
+          }),
+        ),
+      );
+  }
+
+  createChatSession(): Observable<{ sessionId: string }> {
+    return this.http
+      .post<ApiEnvelope<{ sessionId: string }>>(`${this.base}/api/chat/session`, {})
+      .pipe(map(this.unwrap<{ sessionId: string }>({ sessionId: '' })));
+  }
+
+  listChatSessions(): Observable<ChatSessionSummary[]> {
+    return this.http
+      .get<ApiEnvelope<ChatSessionSummary[]>>(`${this.base}/api/chat/sessions`)
+      .pipe(map(this.unwrap<ChatSessionSummary[]>([])));
+  }
+
+  getChatHistory(sessionId: string): Observable<ChatHistoryResponse> {
+    const enc = encodeURIComponent(sessionId);
+    return this.http
+      .get<ApiEnvelope<ChatHistoryResponse>>(`${this.base}/api/chat/${enc}`)
+      .pipe(
+        map(
+          this.unwrap<ChatHistoryResponse>({
+            sessionId: '',
+            title: '',
+            messages: [],
+          }),
+        ),
+      );
+  }
+
+  postChatMessage(sessionId: string, message: string): Observable<AgentChatResponse> {
+    const enc = encodeURIComponent(sessionId);
+    return this.http
+      .post<ApiEnvelope<AgentChatResponse>>(`${this.base}/api/chat/${enc}`, { message })
+      .pipe(
+        map(
+          this.unwrap<AgentChatResponse>({
+            message: '',
+            bullets: [],
+            referencedTicketIds: [],
+            sessionId,
+          }),
+        ),
+      );
+  }
+
+  postScenario(
+    tier: SimulationScenarioTier,
+  ): Observable<{ scenario: string; message: string }> {
+    return this.http
+      .post<ApiEnvelope<{ scenario: string; message: string }>>(
+        `${this.base}/api/scenario/${tier}`,
+        {},
+      )
+      .pipe(
+        map(
+          this.unwrap<{ scenario: string; message: string }>({
+            scenario: tier,
+            message: '',
+          }),
+        ),
+      );
   }
 }

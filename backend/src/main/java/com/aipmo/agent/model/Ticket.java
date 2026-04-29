@@ -1,6 +1,7 @@
 package com.aipmo.agent.model;
 
 import com.aipmo.agent.dto.DataQuality;
+import com.aipmo.agent.dto.RootCauseDto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -65,8 +66,15 @@ public class Ticket {
     /** Multi-signal PMO-style reading; may mirror structured insight reasoning. */
     private String reasoning;
     private String rootCause;
+    /** Structured multi-signal root cause (intelligence layer). */
+    private RootCauseDto rootCauseAnalysis;
+    /** Human-readable factors backing risk / insight (for “Why this?” UI). */
+    @Builder.Default
+    private List<String> explainabilityFactors = new ArrayList<>();
     private String impact;
     private String recommendedAction;
+    /** Who should drive the recommended next step (reviewer, assignee, external team, …). */
+    private String actionOwner;
     private String severity;
     private String trendIndicator;
     private String confidence;
@@ -123,6 +131,38 @@ public class Ticket {
     private Instant lastCommitAt;
     /** GitHub login style author for the PR (may differ from Jira assignee). */
     private String prAuthor;
+
+    /** Synthetic commit subjects (smart-commit style SIM-NNNN prefixes). */
+    @Builder.Default
+    private List<String> commitMessages = new ArrayList<>();
+
+    /** PR title (often contains SIM-NNNN). */
+    private String prTitle;
+
+    /** Same intent as {@link #prUrl} — demo-friendly explicit link field for judges. */
+    private String prLink;
+
+    /** Denormalized count of synthetic commits (matches {@link #commitMessages} size when loaded). */
+    @Builder.Default
+    private int commitCount = 0;
+
+    /** Release tag after merge (simulation). */
+    private String deploymentTag;
+
+    /** Whether the merged change reached an environment (simulation — only meaningful when merged). */
+    @Builder.Default
+    private boolean deployed = false;
+
+    private Instant deployedAt;
+
+    /** DEV, QA, or PROD when deployed. */
+    private String deployEnvironment;
+
+    /** Hours the pull request has been open (simulated pipeline / review clock). */
+    private Double prAgeHours;
+
+    /** Synthetic reviewer queue delay (hours). */
+    private Double reviewerDelayHours;
 
     /** Set when the user manually sends an update to Teams for this ticket (evaluation / demo). */
     private Instant lastNotifiedAt;

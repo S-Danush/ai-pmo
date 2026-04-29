@@ -41,7 +41,82 @@ public class LocalAIService {
      * static template.
      */
     public String generateManagerStyleMessage(Ticket ticket) {
-        ThreadLocalRandom r = ThreadLocalRandom.current();
+        if (ticket.getRootCauseAnalysis() != null
+                && ticket.getRootCauseAnalysis().getReasons() != null
+                && !ticket.getRootCauseAnalysis().getReasons().isEmpty()) {
+            String body = buildDeterministicTeamsFromEngines(ticket);
+            log.info("Manager-style Teams message (engine) ticketId={}", ticket.getId());
+            return body;
+        }
+        return generateManagerStyleMessageLegacy(ticket);
+    }
+
+    private static String buildDeterministicTeamsFromEngines(Ticket ticket) {
+        String assignee = ticket.getAssignee();
+        String who = firstNameForGreeting(assignee);
+        String id = ticket.getId() != null ? ticket.getId() : "this item";
+        String priority = ticket.getPriority() != null ? ticket.getPriority() : "Medium";
+        int hours = ticket.getTimeInState();
+        String dwell =
+                ticket.getTimeInStatusLabel() != null && !ticket.getTimeInStatusLabel().isBlank()
+                        ? ticket.getTimeInStatusLabel().trim()
+                        : "~" + hours + " hours";
+
+        var rc = ticket.getRootCauseAnalysis();
+        StringBuilder out = new StringBuilder(1200);
+        out.append("Hey ")
+                .append(who != null ? who : "there")
+                .append(" — quick check on ")
+                .append(id)
+                .append(".\n\n");
+
+        out.append("This is a ")
+                .append(priority.toLowerCase(Locale.ROOT))
+                .append("-priority item and has been in ")
+                .append(nullSafeDisplayStatus(ticket))
+                .append(" for ")
+                .append(dwell)
+                .append(".\n\n");
+
+        out.append("It looks like the delay is mainly due to:\n");
+        for (String line : rc.getReasons()) {
+            if (line != null && !line.isBlank()) {
+                out.append("• ").append(line.trim()).append("\n");
+            }
+        }
+        out.append("\n");
+
+        String action = ticket.getRecommendedAction();
+        String owner = ticket.getActionOwner();
+        if (action != null && !action.isBlank()) {
+            out.append("Suggested next step: ").append(action.trim());
+            if (owner != null && !owner.isBlank()) {
+                out.append("\nOwner focus: ").append(owner.trim());
+            }
+            out.append("\n\n");
+        }
+
+        if (isHighPriority(ticket.getPriority()) && hours >= 72) {
+            out.append(
+                    "If this isn’t resolved today, it may impact release timelines — can you take a look and confirm what’s blocking progress?");
+        } else {
+            out.append("Can you take a look and confirm what’s blocking progress?");
+        }
+        return out.toString().trim();
+    }
+
+    private static String nullSafeDisplayStatus(Ticket ticket) {
+        if (ticket.getDisplayStatus() != null && !ticket.getDisplayStatus().isBlank()) {
+            return ticket.getDisplayStatus().trim();
+        }
+        if (ticket.getStatus() != null) {
+            return ticket.getStatus().trim();
+        }
+        return "its current status";
+    }
+
+    /** Legacy template path when structured root-cause analysis is absent. */
+    private String generateManagerStyleMessageLegacy(Ticket ticket) {
         String assignee = ticket.getAssignee();
         String who = firstNameForGreeting(assignee);
         String id = ticket.getId() != null ? ticket.getId() : "this item";
@@ -55,6 +130,7 @@ public class LocalAIService {
         String priority = ticket.getPriority() != null ? ticket.getPriority() : "Medium";
         String bottleneck = ticket.getBottleneckCategory();
 
+        ThreadLocalRandom r = ThreadLocalRandom.current();
         StringBuilder out = new StringBuilder(900);
         out.append(buildGreetingLine(r, who, id)).append("\n\n");
 
@@ -157,7 +233,12 @@ public class LocalAIService {
 
     private static boolean correlationMentionsDevNotStarted(Ticket ticket) {
         return correlationList(ticket).stream()
-                .anyMatch(s -> s != null && s.toLowerCase(Locale.ROOT).contains("development may not"));
+                .anyMatch(
+                        s ->
+                                s != null
+                                        && (s.toLowerCase(Locale.ROOT).contains("development may not")
+                                                || s.toLowerCase(Locale.ROOT)
+                                                        .contains("git shows no commits")));
     }
 
     private static boolean correlationMentionsPrReview(Ticket ticket) {
@@ -625,6 +706,11 @@ public class LocalAIService {
         boolean noPr = pr == 0 || !ticket.isPrDataAvailable();
         int bounce = Math.max(ticket.getBounceCount(), ticket.getPingPongTransitions());
         boolean prSlow = flags.contains(MetricsService.FLAG_PR_DELAY) || pr >= PR_SLOW_HOURS;
+        int commits = ticket.getCommitCount();
+        boolean gitDevNs = flags.contains(MetricsService.FLAG_DEV_NOT_STARTED);
+        boolean gitPrMissing = flags.contains(MetricsService.FLAG_PR_NOT_CREATED);
+        boolean gitMergedUndep = flags.contains(MetricsService.FLAG_MERGED_NOT_DEPLOYED);
+        Double prAge = ticket.getPrAgeHours();
 
         if (isUnassignedTicket(ticket)) {
             return pickN(
@@ -643,6 +729,45 @@ public class LocalAIService {
                     "The board cannot show who is accountable for the next motion — combine that with dwell and PR at "
                             + pr
                             + "h and you get a classic ownership-gap pattern.");
+        }
+
+        if (gitDevNs && commits == 0 && (inProg || blocked)) {
+            return pickN(
+                    r,
+                    "Git shows no commits on the linked branch yet — it looks like development has not started in the tracked repo, or work is happening somewhere that is not reflected here.",
+                    "There is no commit history tied to this ticket yet while the card sits in an active lane — align on whether engineering has truly started or telemetry is incomplete.",
+                    "Zero commits with meaningful dwell in \"" + friendlyStatus + "\" usually means the bottleneck is earlier than code review — confirm branch ownership and the definition of started.",
+                    "The SDLC signal here is “no engineering artifacts yet” — pair that with priority "
+                            + priority
+                            + " and time-in-state before treating this as a review problem.");
+        }
+        if (gitPrMissing && commits > 0) {
+            return pickN(
+                    r,
+                    "Commits are showing up on the branch, but no pull request is open — work has started locally without entering formal code review.",
+                    "Smart commits reference this ticket, yet there is no PR link — the next motion should be opening or linking review, not more silent commits.",
+                    "Engineering motion exists without a review surface — shipping risk sits between branch and merge, not after merge.",
+                    "This pattern reads as “coding without review readiness” — agree who opens the PR and what “ready for review” means.");
+        }
+        if (gitMergedUndep) {
+            return pickN(
+                    r,
+                    "The change is merged in Git but not deployed to an environment yet — code is integrated while release pipeline or scheduling is still catching up.",
+                    "Merge cleared while deployment tags have not moved — treat this as pipeline or release-queue delay rather than implementation drag.",
+                    "SDLC-wise you are past review; what remains is promotion — stakeholders asking “is it live?” still hear “not yet.”",
+                    "Merged-not-deployed is a classic last-mile risk — confirm whether this is intentional staging discipline or queue starvation.");
+        }
+        if (prSlow
+                && prAge != null
+                && prAge >= PR_SLOW_HOURS
+                && ticket.getPrStatus() != null
+                && "OPEN".equalsIgnoreCase(ticket.getPrStatus().trim())) {
+            return pickN(
+                    r,
+                    "The pull request has been open a long time — this is likely stuck in code review or waiting on reviewer bandwidth rather than implementation.",
+                    "Review dwell dominates the profile while the branch keeps aging — merge is the gating step holding QA and release sequencing.",
+                    "Git age on the PR suggests review delay — escalate reviewer pairing or shrink the diff if feedback keeps stalling.",
+                    "OPEN PR with long elapsed hours reads as a queue problem — align owners so the next comment or approval has a name and a date.");
         }
 
         if (high && inProg && dwell >= FIVE_DAYS_IN_STATE_HOURS && noPr && dep) {
@@ -1064,5 +1189,61 @@ public class LocalAIService {
             return "MEDIUM";
         }
         return "LOW";
+    }
+
+    /**
+     * One-line manager insight for team analytics member cards — purely rule-based on aggregates +
+     * synthetic Git signals (no external models).
+     */
+    public String generateTeamMemberPerformanceInsight(
+            String name,
+            int assigned,
+            int completed,
+            int inProgress,
+            int underReview,
+            int blocked,
+            int totalCommits,
+            double avgPrReviewHours,
+            String performanceLevel) {
+        String display = name != null && !name.isBlank() ? name.trim() : "This teammate";
+        String level = performanceLevel != null ? performanceLevel.trim().toUpperCase(Locale.ROOT) : "";
+        boolean heavyBlocked = blocked >= 2;
+        boolean reviewHeavy = underReview >= 2;
+        boolean slowReview = avgPrReviewHours >= 36;
+        boolean strongThroughput = completed >= 2 && inProgress <= 2;
+        boolean lowCommits = totalCommits <= 1 && assigned >= 2;
+
+        if ("AT_RISK".equals(level) && heavyBlocked) {
+            return display
+                    + " is carrying several blocked items — dependency and ownership clarity should be the"
+                    + " next leadership touchpoint.";
+        }
+        if ("AT_RISK".equals(level) && reviewHeavy) {
+            return display
+                    + " has multiple reviews in flight at once; sequencing reviews or pairing a reviewer"
+                    + " will reduce context switching.";
+        }
+        if ("AT_RISK".equals(level)) {
+            return display
+                    + " is running hot on active work relative to peers — consider redistributing one item or"
+                    + " tightening WIP limits.";
+        }
+        if (strongThroughput && slowReview) {
+            return display
+                    + " shows strong delivery throughput, but PR cycle times suggest reviews are slower"
+                    + " than ideal — worth a light process check.";
+        }
+        if (lowCommits && inProgress >= 2) {
+            return display
+                    + " has several in-progress tickets with light commit activity — good moment to validate"
+                    + " scope and whether work is truly underway.";
+        }
+        if ("HEALTHY".equals(level)) {
+            return display + " is in a balanced posture: healthy completion signal with manageable active load.";
+        }
+        if (blocked == 1) {
+            return display + " has one blocked ticket — a short unblock stand-up will keep momentum.";
+        }
+        return display + " sits in a moderate risk band: monitor dwell in review and any new external dependencies.";
     }
 }

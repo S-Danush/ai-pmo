@@ -15,7 +15,6 @@ export class LoginComponent {
   username = '';
   password = '';
   error: string | null = null;
-  submitting = false;
 
   constructor(
     private readonly auth: AuthService,
@@ -24,13 +23,10 @@ export class LoginComponent {
 
   submit(): void {
     this.error = null;
-    this.submitting = true;
-    const ok = this.auth.login(this.username.trim(), this.password);
-    this.submitting = false;
-    if (ok) {
+    if (this.auth.login(this.username, this.password)) {
       void this.router.navigateByUrl('/');
-    } else {
-      this.error = 'Invalid username or password.';
+      return;
     }
+    this.error = 'Invalid username or password.';
   }
 }

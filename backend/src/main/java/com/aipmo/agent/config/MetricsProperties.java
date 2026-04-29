@@ -28,4 +28,10 @@ public class MetricsProperties {
 
     /** Ping-pong reversals (A→B→A) needed before BOUNCING. */
     private int bouncePingPongMin = 3;
+
+    /** OPEN PR older than this (hours) contributes PR_DELAY with Git signals. */
+    private int gitPrDelayThresholdHours = 48;
+
+    /** Last commit newer than this window → ACTIVE_DEVELOPMENT (hours). */
+    private int gitActiveDevelopmentHours = 72;
 }

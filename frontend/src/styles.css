@@ -1,10 +1,12 @@
-/* —— AI PMO Agent — design tokens —— */
 :root.theme-dark,
 :root[data-theme='dark'] {
-  --app-bg: #0b0f1a;
-  --nav-bg: rgba(15, 23, 42, 0.85);
-  --sidebar-bg: #0f1419;
-  --card-bg: rgba(22, 27, 38, 0.92);
+  --bg-primary: #0f172a;
+  --text-primary: #e8eef7;
+  --border-color: rgba(148, 163, 184, 0.18);
+  --app-bg: #0f172a;
+  --nav-bg: rgba(15, 23, 42, 0.92);
+  --sidebar-bg: #0f172a;
+  --card-bg: #1e293b;
   --surface-1: #151b26;
   --surface-2: rgba(148, 163, 184, 0.08);
   --surface-3: rgba(148, 163, 184, 0.14);
@@ -22,10 +24,18 @@
   --risk-amber-b: rgba(217, 119, 6, 0.18);
   --risk-green-a: rgba(45, 212, 191, 0.1);
   --risk-green-b: rgba(16, 185, 129, 0.18);
+  --state-healthy: #4ade80;
+  --state-at-risk: #fbbf24;
+  --state-blocked: #f87171;
+  --backdrop-scrim: rgba(2, 6, 23, 0.58);
+  --btn-primary-bg: linear-gradient(135deg, var(--accent-1), var(--accent-2));
 }
 
 :root.theme-light,
 :root[data-theme='light'] {
+  --bg-primary: #ffffff;
+  --text-primary: #0f172a;
+  --border-color: rgba(15, 23, 42, 0.1);
   --app-bg: #f1f5f9;
   --nav-bg: rgba(255, 255, 255, 0.92);
   --sidebar-bg: #ffffff;
@@ -47,6 +57,11 @@
   --risk-amber-b: rgba(251, 191, 36, 0.35);
   --risk-green-a: rgba(204, 251, 241, 0.55);
   --risk-green-b: rgba(45, 212, 191, 0.35);
+  --state-healthy: #16a34a;
+  --state-at-risk: #ea580c;
+  --state-blocked: #dc2626;
+  --backdrop-scrim: rgba(15, 23, 42, 0.4);
+  --btn-primary-bg: linear-gradient(135deg, var(--accent-1), var(--accent-2));
 }
 
 * {
@@ -72,8 +87,8 @@ body {
     Helvetica,
     Arial,
     sans-serif;
-  background: var(--app-bg);
-  color: var(--text);
+  background: var(--app-bg, var(--bg-primary));
+  color: var(--text, var(--text-primary));
   -webkit-font-smoothing: antialiased;
 }
 
@@ -96,4 +111,36 @@ select {
 
 .tab-panel-animate {
   animation: tab-in 0.22s ease-out;
+}
+
+html[data-theme='dark'] .exec-hero,
+html.theme-dark .exec-hero {
+  background: var(--card-bg) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme='dark'] .exec-kicker,
+html.theme-dark .exec-kicker,
+html[data-theme='dark'] .exec-metric-label,
+html.theme-dark .exec-metric-label {
+  color: var(--muted) !important;
+}
+
+html[data-theme='dark'] .exec-main-title,
+html.theme-dark .exec-main-title,
+html[data-theme='dark'] .exec-metric-value,
+html.theme-dark .exec-metric-value {
+  color: var(--text-primary) !important;
+}
+
+html[data-theme='dark'] .kpi-card,
+html.theme-dark .kpi-card {
+  background: var(--card-bg) !important;
+  border-color: var(--border) !important;
+  color: var(--text);
+}
+
+html[data-theme='dark'] .kpi-label,
+html.theme-dark .kpi-label {
+  color: var(--muted);
 }
