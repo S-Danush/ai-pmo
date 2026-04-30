@@ -31,10 +31,11 @@ public class WebConfig implements WebMvcConfigurer {
                 registry.addMapping("/api/**")
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*");
+        // Use patterns so values like https://*.netlify.app work (allowedOrigins rejects '*').
         if (origins.length == 0) {
             registration.allowedOriginPatterns("*");
         } else {
-            registration.allowedOrigins(origins);
+            registration.allowedOriginPatterns(origins);
         }
     }
 }
