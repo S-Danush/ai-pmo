@@ -436,3 +436,53 @@
 .ta-git-table tr:last-child td {
   border-bottom: none;
 }
+
+/* —— Mobile —— */
+@media (max-width: 899px) {
+  .ta-page {
+    padding: 0.75rem max(0.65rem, env(safe-area-inset-left)) 2rem max(0.65rem, env(safe-area-inset-right));
+  }
+
+  .ta-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ta-refresh {
+    align-self: flex-start;
+  }
+
+  .member-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bar-row {
+    grid-template-columns: minmax(0, 1fr) 3fr auto;
+    gap: 0.35rem 0.45rem;
+    font-size: 0.76rem;
+  }
+
+  .spark-row {
+    flex-wrap: wrap;
+  }
+
+  .spark-label {
+    flex: 1 1 100%;
+  }
+
+  .filt-input,
+  .filt-input-sm {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .ta-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .member-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -1,8 +1,4 @@
 <div class="agent-layout" [class.agent-layout--history-collapsed]="historyCollapsed">
-  <app-loading-overlay
-    [active]="sessionLoading || sending"
-    [label]="sending ? 'Sending…' : 'Loading chat…'"
-  />
   <aside
     class="chat-sessions"
     [class.chat-sessions--collapsed]="historyCollapsed"

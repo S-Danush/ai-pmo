@@ -1,5 +1,5 @@
 import { CommonModule, NgSwitch, NgSwitchCase } from '@angular/common';
-import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter, Subscription } from 'rxjs';
 import {
@@ -17,6 +17,10 @@ import { AuthService } from '../../services/auth.service';
   styleUrl: './shell.component.css',
 })
 export class ShellComponent implements OnInit, OnDestroy {
+  /** Viewport ≤899px: sidebar becomes an off-canvas drawer. */
+  readonly isNarrow = signal(false);
+  readonly mobileDrawerOpen = signal(false);
+
   readonly sidebarItems: { id: SidebarSection; label: string; route: string | null }[] = [
     { id: 'overview', label: 'Overview', route: null },
     { id: 'delivery-analytics', label: 'Delivery', route: 'delivery-analytics' },
@@ -40,6 +44,7 @@ export class ShellComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.refreshViewportFlags();
     this.syncSidebarFromUrl(this.router.url);
     this.navSub = this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
@@ -87,11 +92,40 @@ export class ShellComponent implements OnInit, OnDestroy {
   selectSidebar(s: SidebarSection): void {
     const item = this.sidebarItems.find((i) => i.id === s);
     this.dash.setSidebarSection(s);
+    if (this.isNarrow()) {
+      this.mobileDrawerOpen.set(false);
+    }
     if (item?.route) {
       void this.router.navigate([item.route], { relativeTo: this.route });
       return;
     }
     void this.router.navigate([''], { relativeTo: this.route });
+  }
+
+  onNavToggle(): void {
+    if (this.isNarrow()) {
+      this.mobileDrawerOpen.update((open) => !open);
+    } else {
+      this.dash.toggleSidebar();
+    }
+  }
+
+  closeMobileDrawer(): void {
+    this.mobileDrawerOpen.set(false);
+  }
+
+  @HostListener('window:resize')
+  onWindowResize(): void {
+    this.refreshViewportFlags();
+  }
+
+  private refreshViewportFlags(): void {
+    const narrow =
+      typeof window !== 'undefined' && window.matchMedia('(max-width: 899px)').matches;
+    this.isNarrow.set(narrow);
+    if (!narrow) {
+      this.mobileDrawerOpen.set(false);
+    }
   }
 
   toggleTheme(): void {
@@ -145,6 +179,14 @@ export class ShellComponent implements OnInit, OnDestroy {
     if (!t.closest('.user-wrap') && !t.closest('.notif-wrap')) {
       this.userMenuOpen = false;
       this.notifOpen = false;
+    }
+    if (
+      this.isNarrow() &&
+      this.mobileDrawerOpen() &&
+      !t.closest('.sidebar') &&
+      !t.closest('.sidebar-toggle')
+    ) {
+      this.mobileDrawerOpen.set(false);
     }
   }
 }

@@ -224,6 +224,10 @@ public class AgentChatService {
             TeamAnalyticsResponseDto team,
             List<ChatMessage> prior) {
         Understood understood = understandQuery(q, norm, tickets, team);
+        if ((understood.kind() == UnderstoodKind.ASSIGNEE || understood.kind() == UnderstoodKind.WORKING_ON)
+                && assigneeIntentWithNoMatchingTickets(understood, tickets)) {
+            understood = new Understood(UnderstoodKind.GENERIC, "", false);
+        }
         List<Ticket> slice = sliceTicketsForModel(tickets, understood);
         slice = refineSliceForChatFollowUp(session, norm, q, tickets, slice);
         String ticketsJson = buildProjectContextJson(slice, team);
@@ -373,17 +377,34 @@ public class AgentChatService {
         trimQueries(session);
         session.lastIntent = intentFromUnderstood(understood);
 
-        if (groqAIService.isEnabled() && !useLocalDataBackedAnswer(understood)) {
-            log.debug("[agent-chat] Groq path understoodKind={}", understood.kind());
+        boolean widenEmptyAssigneeToGroq =
+                groqAIService.isEnabled()
+                        && useLocalDataBackedAnswer(understood)
+                        && assigneeIntentWithNoMatchingTickets(understood, tickets);
+
+        if (groqAIService.isEnabled() && (!useLocalDataBackedAnswer(understood) || widenEmptyAssigneeToGroq)) {
+            Understood groqUnderstood =
+                    widenEmptyAssigneeToGroq ? new Understood(UnderstoodKind.GENERIC, "", false) : understood;
+            log.debug(
+                    "[agent-chat] Groq path understoodKind={}{}",
+                    groqUnderstood.kind(),
+                    widenEmptyAssigneeToGroq ? " (full portfolio context; no assignee rows matched)" : "");
             try {
-                return completeWithGroq(sessionId, q, session, tickets, team, understood);
+                return completeWithGroq(sessionId, q, session, tickets, team, groqUnderstood);
             } catch (Exception e) {
                 log.error("[agent-chat] Groq failed; data-backed fallback: {}", e.toString(), e);
+                if (groqUnderstood.kind() == UnderstoodKind.GENERIC && !widenEmptyAssigneeToGroq) {
+                    return genericNaturalLanguageUnavailable(sessionId, true);
+                }
             }
         } else if (groqAIService.isEnabled()) {
             log.debug("[agent-chat] Groq skipped for deterministic intent kind={}", understood.kind());
         } else {
             log.debug("[agent-chat] Groq disabled; data-backed reply");
+        }
+
+        if (understood.kind() == UnderstoodKind.GENERIC && !groqAIService.isEnabled()) {
+            return genericNaturalLanguageUnavailable(sessionId, false);
         }
 
         return answerFromUnderstoodWithScratch(sessionId, understood, tickets, team, session);
@@ -660,6 +681,31 @@ public class AgentChatService {
         }
 
         return new Understood(UnderstoodKind.GENERIC, "", false);
+    }
+
+    /**
+     * Assignee-style intent with zero matching rows (unknown name, cohort label, etc.): prefer sending a
+     * full portfolio slice to Groq instead of an empty JSON context.
+     */
+    private static boolean assigneeIntentWithNoMatchingTickets(Understood u, List<Ticket> tickets) {
+        if (u.kind() != UnderstoodKind.ASSIGNEE && u.kind() != UnderstoodKind.WORKING_ON) {
+            return false;
+        }
+        return filterTicketsForPerson(u.entityFragment(), tickets).isEmpty();
+    }
+
+    private AgentChatResponseDto genericNaturalLanguageUnavailable(String sessionId, boolean groqRequestFailed) {
+        String msg =
+                groqRequestFailed
+                        ? "I couldn’t reach the **Groq** model just now, so I can’t answer open-ended questions from the portfolio in this request. Please try again shortly."
+                        : "Open-ended questions (for example counts by cohort or comparisons) need the **portfolio AI** (Groq). It isn’t configured on this server: set **GROQ_API_KEY** (or Spring property `groq.api.key`) and redeploy the backend. Until then, try **blocked tickets**, **who is overloaded**, **tickets for** a specific assignee name, or **riskiest tickets** — those work without Groq.";
+        return chatResponse(
+                sessionId,
+                ASRC_LOCAL_HANDLER,
+                groqRequestFailed ? "groq-request-failed-generic" : "groq-disabled-generic",
+                msg,
+                List.of(),
+                List.of());
     }
 
     /**

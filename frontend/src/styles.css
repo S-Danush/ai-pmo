@@ -70,6 +70,7 @@
 
 html {
   color-scheme: dark;
+  overflow-x: clip;
 }
 
 html.theme-dark,

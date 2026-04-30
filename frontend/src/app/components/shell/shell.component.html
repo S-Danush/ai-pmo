@@ -1,11 +1,22 @@
-<div class="shell" [class.sidebar-collapsed]="dash.sidebarCollapsed()">
+<div
+  class="shell"
+  [class.shell--narrow]="isNarrow()"
+  [class.shell--drawer-open]="mobileDrawerOpen()"
+  [class.sidebar-collapsed]="dash.sidebarCollapsed() && !isNarrow()"
+>
+  <div
+    class="shell-drawer-backdrop"
+    *ngIf="isNarrow() && mobileDrawerOpen()"
+    (click)="closeMobileDrawer()"
+    aria-hidden="true"
+  ></div>
   <header class="top-nav">
     <div class="nav-left">
       <button
         type="button"
         class="icon-btn sidebar-toggle"
-        (click)="dash.toggleSidebar()"
-        [attr.aria-expanded]="!dash.sidebarCollapsed()"
+        (click)="onNavToggle()"
+        [attr.aria-expanded]="isNarrow() ? mobileDrawerOpen() : !dash.sidebarCollapsed()"
         aria-label="Toggle sidebar"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">

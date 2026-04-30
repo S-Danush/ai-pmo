@@ -704,17 +704,23 @@ html[data-theme='dark'] .gemini-composer-box:focus-within {
 
 @media (max-width: 720px) {
   .agent-layout {
-    flex-direction: column;
+    flex-direction: column-reverse;
+    min-height: 0;
+  }
+
+  .gemini-chat-stack {
+    flex: 1;
+    min-height: 0;
   }
 
   .chat-sessions {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
     width: 100% !important;
-    max-height: 200px;
+    max-height: min(38vh, 260px);
     opacity: 1 !important;
     pointer-events: auto !important;
     border-right: none;
-    border-bottom: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--border-subtle);
   }
 
   .chat-sessions--collapsed {
@@ -727,13 +733,23 @@ html[data-theme='dark'] .gemini-composer-box:focus-within {
 
   .gemini-scroll-inner,
   .gemini-composer-inner {
-    padding-left: 1rem;
-    padding-right: 1rem;
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
   }
 
   .gemini-topbar {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
+    padding-left: max(0.65rem, env(safe-area-inset-left));
+    padding-right: max(0.65rem, env(safe-area-inset-right));
+  }
+
+  .gemini-input {
+    min-height: 44px;
+    font-size: 16px; /* avoids iOS zoom on focus */
+  }
+
+  .gemini-send {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 

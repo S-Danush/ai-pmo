@@ -3794,3 +3794,53 @@ td.num {
   line-height: 1.35;
   color: var(--state-at-risk);
 }
+
+/* —— Mobile / small viewports —— */
+@media (max-width: 899px) {
+  .page {
+    padding: 0.75rem max(0.65rem, env(safe-area-inset-left)) 2.5rem max(0.65rem, env(safe-area-inset-right));
+  }
+
+  .dash-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .filters-bar-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-select {
+    max-width: none;
+    width: 100%;
+  }
+
+  .exec-hero {
+    padding: 1rem 1.1rem 1.15rem;
+  }
+
+  .exec-main-title {
+    font-size: 1.05rem;
+    letter-spacing: 0.02em;
+  }
+
+  .delivery-compact-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar-run-agent {
+    width: 100%;
+    justify-content: center;
+  }
+}

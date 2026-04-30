@@ -17,6 +17,8 @@
   border-bottom: 1px solid var(--border);
   background: var(--nav-bg);
   backdrop-filter: blur(12px);
+  position: relative;
+  z-index: 200;
 }
 
 .nav-left {
@@ -454,4 +456,74 @@
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* —— Mobile: off-canvas nav drawer —— */
+.shell-drawer-backdrop {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .top-nav {
+    padding-left: max(0.35rem, env(safe-area-inset-left));
+    padding-right: max(0.35rem, env(safe-area-inset-right));
+    height: auto;
+    min-height: 52px;
+    padding-top: max(0.35rem, env(safe-area-inset-top));
+    padding-bottom: 0.35rem;
+  }
+
+  .app-tag {
+    display: none;
+  }
+
+  .app-name {
+    font-size: 0.92rem;
+  }
+
+  .shell--narrow .shell-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    top: 0;
+    left: 0;
+    z-index: 160;
+    background: var(--backdrop-scrim);
+    animation: drop-in 0.2s ease-out;
+  }
+
+  .shell--narrow .sidebar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    bottom: 0;
+    width: min(288px, 88vw);
+    max-width: 100%;
+    z-index: 170;
+    padding: 0.75rem 0.5rem max(0.75rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-105%);
+    transition: transform 0.24s ease;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+  }
+
+  .shell--narrow.shell--drawer-open .sidebar {
+    transform: translateX(0);
+  }
+
+  /* Full labels in drawer (desktop collapsed rail does not apply on narrow) */
+  .shell--narrow .sb-label {
+    display: inline !important;
+  }
+
+  .shell--narrow .main-area {
+    width: 100%;
+    min-height: calc(100dvh - 56px);
+  }
+
+  .dropdown {
+    right: max(0.5rem, env(safe-area-inset-right));
+    max-width: calc(100vw - 1rem);
+  }
 }
