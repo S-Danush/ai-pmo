@@ -5,5 +5,11 @@
   "java.import.gradle.enabled": true,
   "java.import.gradle.wrapper.enabled": true,
   "java.project.importOnFirstTimeStartup": "automatic",
-  "java.compile.nullAnalysis.mode": "disabled"
+  "java.compile.nullAnalysis.mode": "disabled",
+  "files.watcherExclude": {
+    "**/frontend/node_modules/**": true,
+    "**/frontend/dist/**": true,
+    "**/backend/.gradle/**": true,
+    "**/backend/build/**": true
+  }
 }
