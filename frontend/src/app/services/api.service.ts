@@ -3,6 +3,8 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+import { environment } from '../../environments/environment';
+
 export type ProjectStatus = 'RED' | 'AMBER' | 'GREEN';
 
 export type DataQuality = 'HIGH' | 'PARTIAL' | 'MOCK';
@@ -265,7 +267,7 @@ export interface ChatHistoryResponse {
   providedIn: 'root',
 })
 export class ApiService {
-  private readonly base = '';
+  private readonly base = environment.apiBaseUrl.replace(/\/$/, '');
 
   constructor(private readonly http: HttpClient) {}
 
