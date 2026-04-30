@@ -1,0 +1,6 @@
+.git
+frontend/node_modules
+backend/.gradle
+backend/build
+backend/config/local-keys.properties
+*.md

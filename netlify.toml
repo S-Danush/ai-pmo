@@ -1,7 +1,8 @@
 # Netlify: connect this Git repo, then use these defaults (or set the same values in the UI).
 # After Render gives you an API URL, add a Netlify build env var: BACKEND_URL=https://your-service.onrender.com
 [build]
-  base = "ai-pmo-agent/frontend"
+  # Repo root is this folder (backend/ + frontend/). Use "ai-pmo-agent/frontend" only if the Git root is the parent directory.
+  base = "frontend"
   command = "npm ci && npm run build"
   publish = "dist/frontend/browser"
 

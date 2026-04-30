@@ -1,11 +1,11 @@
 # Optional Render Blueprint: Dashboard → New → Blueprint → paste this repo.
-# Or create a Web Service manually: Docker, root Dockerfile path below, same Docker context.
+# Or create manually: Dockerfile path = Dockerfile, Docker context = . (repo root).
 services:
   - type: web
     name: ai-pmo-agent-api
     runtime: docker
     plan: free
     region: oregon
-    dockerfilePath: ai-pmo-agent/backend/Dockerfile
-    dockerContext: ai-pmo-agent/backend
+    dockerfilePath: Dockerfile
+    dockerContext: .
     healthCheckPath: /api/health
