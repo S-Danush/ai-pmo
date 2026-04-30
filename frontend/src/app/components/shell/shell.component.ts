@@ -19,6 +19,8 @@ import { AuthService } from '../../services/auth.service';
 export class ShellComponent implements OnInit, OnDestroy {
   readonly sidebarItems: { id: SidebarSection; label: string; route: string | null }[] = [
     { id: 'overview', label: 'Overview', route: null },
+    { id: 'delivery-analytics', label: 'Delivery', route: 'delivery-analytics' },
+    { id: 'agent-actions', label: 'Agent actions', route: 'agent-actions' },
     { id: 'tickets', label: 'Jira Tickets', route: 'tickets' },
     { id: 'bottlenecks', label: 'Bottlenecks', route: 'bottlenecks' },
     { id: 'team-analytics', label: 'Git Analytics', route: 'team' },
@@ -55,6 +57,14 @@ export class ShellComponent implements OnInit, OnDestroy {
 
     if (last === 'tickets') {
       this.dash.setSidebarSection('tickets');
+      return;
+    }
+    if (last === 'delivery-analytics') {
+      this.dash.setSidebarSection('delivery-analytics');
+      return;
+    }
+    if (last === 'agent-actions') {
+      this.dash.setSidebarSection('agent-actions');
       return;
     }
     if (last === 'bottlenecks') {

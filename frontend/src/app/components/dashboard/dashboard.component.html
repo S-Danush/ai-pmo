@@ -1,4 +1,6 @@
 <div class="page">
+  <app-loading-overlay [active]="showLoadingOverlay()" [label]="loadingOverlayLabel()" />
+
   <div
     class="toast"
     *ngIf="toast"
@@ -121,16 +123,67 @@
           </ng-container>
         </div>
 
-        <article class="chart-card premium-card overview-trend-card" *ngIf="deliveryTrendSnapshots().length">
-          <h3 class="chart-card-title">Delivery trend</h3>
-          <p class="chart-sub muted">Average dwell (hours) across recent agent runs — higher bars mean more time in status.</p>
-          <div class="trend-spark-wrap" role="img" aria-label="Dwell trend by snapshot">
-            <div *ngFor="let p of deliveryTrendSnapshots()" class="trend-spark-col" [attr.title]="trendBarTitle(p)">
-              <div class="trend-spark-bar" [style.height.%]="trendBarHeight(p.avgDwellHours)"></div>
-              <span class="trend-spark-label">{{ p.recordedAt | date : 'MM/dd' }}</span>
+        <article class="chart-card premium-card delivery-outlook-executive" *ngIf="projectSummary">
+          <h3 class="chart-card-title">Delivery outlook</h3>
+          <p class="chart-sub muted" *ngIf="projectSummary.predictionReason">{{ projectSummary.predictionReason }}</p>
+          <dl class="delivery-exec-dl">
+            <div>
+              <dt>Estimated completion (UTC)</dt>
+              <dd class="mono-nums">{{ projectSummary.predictedGoLiveDate | date : 'mediumDate' }}</dd>
+            </div>
+            <div>
+              <dt>Velocity</dt>
+              <dd>{{ projectSummary.deliveryVelocity ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt>Slowest stage</dt>
+              <dd>{{ projectSummary.slowestStage ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt>Confidence</dt>
+              <dd>{{ projectSummary.deliveryConfidence ?? '—' }}</dd>
+            </div>
+          </dl>
+        </article>
+
+        <section class="insight-exec card premium-card" *ngIf="projectSummary.projectRiskSummary">
+          <h3 class="chart-card-title">Why is the project in this state?</h3>
+          <div class="parse-risk">{{ parsePortfolioRead().lead }}</div>
+          <ul class="insight-bullets">
+            <li *ngFor="let b of parsePortfolioRead().bullets">{{ b }}</li>
+          </ul>
+        </section>
+        <section class="insights-panel card premium-card">
+          <header class="insights-panel-head">
+            <div class="insights-panel-head-text">
+              <h3 class="insights-panel-title">Key insights</h3>
+              <p class="insights-panel-sub">Signals from the current ticket scope, priorities, and bottleneck mix.</p>
+            </div>
+          </header>
+          <div class="insights-grid">
+            <div
+              *ngFor="let ins of keyInsightBlocks(); trackBy: trackInsight"
+              class="insight-card"
+              [ngClass]="'insight-card--' + ins.variant"
+            >
+              <div class="insight-card-top">
+                <span class="insight-card-label">{{ ins.label }}</span>
+                <span class="insight-card-metric mono-nums" *ngIf="ins.metric">{{ ins.metric }}</span>
+              </div>
+              <p class="insight-card-body">{{ ins.body }}</p>
             </div>
           </div>
-        </article>
+          <section class="insights-narrative" *ngIf="stageInsightList().length">
+            <h4 class="insights-narrative-title">Stage bottlenecks</h4>
+            <ul class="explain-list">
+              <li *ngFor="let si of stageInsightList()"><strong>{{ si.stage }}</strong> — {{ si.text }}</li>
+            </ul>
+          </section>
+          <section class="insights-narrative" *ngIf="showPortfolioNarrative()">
+            <h4 class="insights-narrative-title">Portfolio narrative</h4>
+            <p class="insights-narrative-text">{{ projectSummary.reasonForStatus }}</p>
+          </section>
+        </section>
 
         <section class="bn-summary-grid" *ngIf="bottleneckSummaryCards().length">
           <article
@@ -155,32 +208,81 @@
             </div>
           </article>
         </section>
+      </ng-container>
 
-        <article class="insights-panel card premium-card" *ngIf="projectSummary">
-          <header class="insights-panel-head">
-            <div class="insights-panel-head-text">
-              <h3 class="insights-panel-title">Key insights</h3>
-              <p class="insights-panel-sub">Signals from the current ticket scope, priorities, and bottleneck mix.</p>
+      <ng-container *ngIf="dash.sidebarSection() === 'delivery-analytics' && projectSummary">
+        <section class="delivery-panel card premium-card">
+          <header class="delivery-panel-head">
+            <div>
+              <h1 class="view-title delivery-panel-title">Delivery</h1>
+              <p class="view-sub delivery-panel-sub">
+                Timelines use Jira workflow lane, stage history, complexity, and Git/PR signals — per ticket.
+              </p>
             </div>
+            <span class="delivery-panel-count mono-nums">{{ deliveryCardsView().length }} in view</span>
           </header>
-          <div class="insights-grid">
-            <div
-              *ngFor="let ins of keyInsightBlocks(); trackBy: trackInsight"
-              class="insight-card"
-              [ngClass]="'insight-card--' + ins.variant"
-            >
-              <div class="insight-card-top">
-                <span class="insight-card-label">{{ ins.label }}</span>
-                <span class="insight-card-metric mono-nums" *ngIf="ins.metric">{{ ins.metric }}</span>
+
+          <div class="delivery-compact-grid">
+            <article class="delivery-mini-card" *ngFor="let c of deliveryCardsView()">
+              <div class="d-mini-top">
+                <span class="d-mini-id mono">{{ c.ticketId }}</span>
+                <span [class]="deliveryBadgeClass(c.deliveryStatus)">{{ deliveryBadgeLabel(c.deliveryStatus) }}</span>
               </div>
-              <p class="insight-card-body">{{ ins.body }}</p>
-            </div>
+              <h3 class="d-mini-title">{{ c.title }}</h3>
+              <div class="d-mini-eta-row">
+                <span class="d-mini-eta mono-nums">{{ c.estimatedCompletion }}</span>
+                <span class="d-mini-stage muted">{{ c.assignee }} · {{ c.currentStage }}</span>
+              </div>
+              <p class="d-mini-note" *ngIf="c.timelineNote">{{ c.timelineNote }}</p>
+              <div class="d-mini-meta-row">
+                <span class="d-mini-chip" *ngIf="c.taskComplexity">Complexity {{ c.taskComplexity }}</span>
+                <span class="d-mini-chip muted">TaT {{ c.totalHours ?? 0 }}h</span>
+              </div>
+              <details class="d-mini-details" *ngIf="c.stageTimeline?.length">
+                <summary>Stage breakdown</summary>
+                <div class="d-mini-stages">
+                  <span *ngFor="let e of c.stageTimeline" class="d-mini-stage-pill">
+                    {{ e.stage }} <strong>{{ e.hours }}h</strong>
+                  </span>
+                </div>
+              </details>
+              <p class="d-mini-warn" *ngIf="c.slowStageWarning">{{ c.slowStageWarning }}</p>
+            </article>
           </div>
-          <section class="insights-narrative" *ngIf="showPortfolioNarrative()">
-            <h4 class="insights-narrative-title">Portfolio narrative</h4>
-            <p class="insights-narrative-text">{{ projectSummary.reasonForStatus }}</p>
-          </section>
-        </article>
+        </section>
+      </ng-container>
+
+      <ng-container *ngIf="dash.sidebarSection() === 'agent-actions'">
+        <header class="view-header">
+          <h1 class="view-title">Agent actions</h1>
+          <p class="view-sub">Proactive interventions — based on outlier rules, not noise.</p>
+        </header>
+        <div class="agent-actions-table card premium-card" *ngIf="suggestions.length">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Ticket</th>
+                <th>Reason</th>
+                <th>Next step</th>
+                <th>Suggested</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let s of suggestions">
+                <td class="mono">{{ s.ticketId }}</td>
+                <td>{{ s.reason }}</td>
+                <td>{{ s.recommendedAction }}</td>
+                <td>
+                  <span class="action-chip" *ngFor="let a of s.suggestedActions ?? []">{{ a }}</span>
+                  <span class="muted" *ngIf="!s.suggestedActions?.length">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted pad" *ngIf="!suggestions.length">
+          No tickets currently match the proactive outlier rules (blocked, high priority stuck, PR delay, etc.). If you expected items here, run the agent after changing the portfolio or switch to a scenario with more risk signals.
+        </p>
       </ng-container>
 
       <ng-container *ngIf="dash.sidebarSection() === 'tickets'">
@@ -450,16 +552,22 @@
           <p>{{ t.recommendedAction }}</p>
           <p class="muted small" *ngIf="t.actionOwner">Owner focus: {{ t.actionOwner }}</p>
         </div>
-        <div class="explain-block" *ngIf="showExplainability && (t.explainabilityFactors?.length ?? 0) > 0">
+        <div class="explain-block" *ngIf="showExplainability && hasExplainabilityDetail(t)">
           <h4 class="explain-title">Why this insight?</h4>
-          <ul class="explain-list">
+          <ul class="explain-list compact-facts">
+            <li>Time in current status: <strong class="mono-nums">{{ t.timeInState }}h</strong> ({{ t.timeInStatusLabel || '—' }})</li>
+            <li>Priority: <strong>{{ t.priority || '—' }}</strong></li>
+            <li *ngIf="ticketFlagCodes(t).length">Flags: {{ ticketFlagCodes(t).join(', ') }}</li>
+            <li *ngFor="let e of stageDurationEntries(t)">{{ e.k }} stage: <span class="mono-nums">{{ e.v }}h</span></li>
+          </ul>
+          <ul class="explain-list" *ngIf="t.explainabilityFactors?.length">
             <li *ngFor="let f of t.explainabilityFactors">{{ f }}</li>
           </ul>
         </div>
       </section>
       <footer class="panel-footer">
         <div class="panel-footer-actions">
-          <button type="button" class="btn secondary sm" (click)="toggleExplainability()" *ngIf="t.explainabilityFactors?.length">
+          <button type="button" class="btn secondary sm" (click)="toggleExplainability()" *ngIf="hasExplainabilityDetail(t)">
             {{ showExplainability ? 'Hide' : 'Why this insight?' }}
           </button>
           <button

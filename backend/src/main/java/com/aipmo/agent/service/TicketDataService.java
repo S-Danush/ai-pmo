@@ -10,7 +10,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class TicketDataService {
@@ -98,6 +100,8 @@ public class TicketDataService {
                 .deployEnvironment(t.getDeployEnvironment())
                 .prAgeHours(t.getPrAgeHours())
                 .reviewerDelayHours(t.getReviewerDelayHours())
+                .stageDurations(copyStageMap(t.getStageDurations()))
+                .totalTat(t.getTotalTat())
                 .flags(t.getFlags() != null ? new ArrayList<>(t.getFlags()) : new ArrayList<>())
                 .insight(t.getInsight())
                 .nudge(t.getNudge())
@@ -134,5 +138,12 @@ public class TicketDataService {
             copy.add(copyOne(t));
         }
         return copy;
+    }
+
+    private static Map<String, Integer> copyStageMap(Map<String, Integer> in) {
+        if (in == null || in.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        return new LinkedHashMap<>(in);
     }
 }

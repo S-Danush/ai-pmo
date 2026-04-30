@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -180,6 +181,40 @@ public class AgentChatService {
         return prior.stream().anyMatch(m -> "assistant".equalsIgnoreCase(m.getRole()));
     }
 
+    private List<Ticket> refineSliceForChatFollowUp(
+            IntentScratchpad session,
+            String norm,
+            String q,
+            List<Ticket> all,
+            List<Ticket> primarySlice) {
+        if (session.lastReferencedTicketIds.isEmpty()) {
+            return primarySlice;
+        }
+        if (matchesScopedBlockedFollowUp(norm, q)) {
+            Set<String> idSet = new HashSet<>(session.lastReferencedTicketIds);
+            return all.stream()
+                    .filter(
+                            t ->
+                                    t.getId() != null
+                                            && idSet.contains(t.getId())
+                                            && t.getStatus() != null
+                                            && "Blocked".equalsIgnoreCase(t.getStatus().trim()))
+                    .sorted(Comparator.comparing(Ticket::getId))
+                    .collect(Collectors.toList());
+        }
+        return primarySlice;
+    }
+
+    private static boolean matchesScopedBlockedFollowUp(String norm, String q) {
+        if (!norm.contains("block") && !norm.contains("stuck")) {
+            return false;
+        }
+        return (norm.contains("which") && (norm.contains("one") || norm.contains("ones")))
+                || norm.contains("of those")
+                || norm.contains("any of them")
+                || (q.length() < 60 && norm.contains("which") && norm.contains("ticket"));
+    }
+
     private AgentChatResponseDto completeWithGroqConversationFull(
             String sessionId,
             String q,
@@ -189,8 +224,8 @@ public class AgentChatService {
             TeamAnalyticsResponseDto team,
             List<ChatMessage> prior) {
         Understood understood = understandQuery(q, norm, tickets, team);
-        Understood generic = new Understood(UnderstoodKind.GENERIC, "", false);
-        List<Ticket> slice = sliceTicketsForModel(tickets, generic);
+        List<Ticket> slice = sliceTicketsForModel(tickets, understood);
+        slice = refineSliceForChatFollowUp(session, norm, q, tickets, slice);
         String ticketsJson = buildProjectContextJson(slice, team);
         if (ticketsJson == null || ticketsJson.isBlank() || "{}".equals(ticketsJson)) {
             log.warn("[agent-chat] project JSON context is empty (multi-turn)");
@@ -217,7 +252,7 @@ public class AgentChatService {
             }
         }
         String userBlock =
-                buildDataContextUserMessage(UnderstoodKind.GENERIC, q, ticketsJson, teamSummary, bottleneckSummary);
+                buildDataContextUserMessage(understood.kind(), q, ticketsJson, teamSummary, bottleneckSummary);
         conv.add(new GroqAIService.GroqChatMessage("user", userBlock));
         String raw = groqAIService.completeConversation(systemPrompt, conv, false);
         GroqParsed parsed = parseGroqAnswer(raw);
@@ -225,6 +260,15 @@ public class AgentChatService {
         session.recentUserQueries.add(q);
         trimQueries(session);
         session.lastIntent = intentFromUnderstood(understood);
+        if (understood.kind() == UnderstoodKind.ASSIGNEE || understood.kind() == UnderstoodKind.WORKING_ON) {
+            session.lastReferencedTicketIds.clear();
+            session.lastReferencedTicketIds.addAll(
+                    slice.stream()
+                            .map(Ticket::getId)
+                            .filter(id -> id != null && !id.isBlank())
+                            .collect(Collectors.toList()));
+            session.lastAssigneeFragment = understood.entityFragment();
+        }
         return chatResponse(
                 sessionId,
                 ASRC_GROQ,
@@ -342,7 +386,25 @@ public class AgentChatService {
             log.debug("[agent-chat] Groq disabled; data-backed reply");
         }
 
-        return answerFromUnderstood(sessionId, understood, tickets, team);
+        return answerFromUnderstoodWithScratch(sessionId, understood, tickets, team, session);
+    }
+
+    private void touchAssigneeScratch(IntentScratchpad session, Understood u, List<Ticket> all) {
+        if (u.kind() != UnderstoodKind.ASSIGNEE && u.kind() != UnderstoodKind.WORKING_ON) {
+            return;
+        }
+        List<Ticket> m = filterTicketsForPerson(u.entityFragment(), all);
+        session.lastReferencedTicketIds.clear();
+        session.lastReferencedTicketIds.addAll(
+                m.stream().map(Ticket::getId).filter(id -> id != null && !id.isBlank()).collect(Collectors.toList()));
+        session.lastAssigneeFragment = u.entityFragment();
+    }
+
+    private AgentChatResponseDto answerFromUnderstoodWithScratch(
+            String sessionId, Understood u, List<Ticket> tickets, TeamAnalyticsResponseDto team, IntentScratchpad session) {
+        AgentChatResponseDto resp = answerFromUnderstood(sessionId, u, tickets, team);
+        touchAssigneeScratch(session, u, tickets);
+        return resp;
     }
 
     private static String formatAssistantForPersistence(AgentChatResponseDto resp) {
@@ -972,6 +1034,25 @@ public class AgentChatService {
             }
             return g.isBlank() ? null : g;
         }
+        Matcher possessive =
+                Pattern.compile("(?i)([a-z][a-z'.\\s-]{1,48})'s\\s+tickets?").matcher(q.trim());
+        if (possessive.find()) {
+            String name = possessive.group(1).trim();
+            return name.isBlank() ? null : name;
+        }
+        Matcher showPersonTickets =
+                Pattern.compile("(?i)(?:show|list|give)\\s+([a-z][a-z'.\\s-]{1,48})\\s+tickets?")
+                        .matcher(q.trim());
+        if (showPersonTickets.find()) {
+            String name = showPersonTickets.group(1).trim();
+            return name.isBlank() ? null : name;
+        }
+        Matcher forPerson =
+                Pattern.compile("(?i)\\btickets?\\s+for\\s+([a-z][a-z'.\\s-]{1,48})").matcher(q.trim());
+        if (forPerson.find()) {
+            String name = forPerson.group(1).trim();
+            return name.isBlank() ? null : name;
+        }
         return null;
     }
 
@@ -1411,7 +1492,14 @@ public class AgentChatService {
             n.put("deliveryRisk", nullSafe(t.getDeliveryRisk()));
             n.put("bottleneck", nullSafe(t.getBottleneckCategory()));
             n.put("timeInStateHours", t.getTimeInState());
+            n.put("totalTatHours", t.getTotalTat());
             n.put("prReviewHours", t.getPrTime());
+            if (t.getStageDurations() != null && !t.getStageDurations().isEmpty()) {
+                ObjectNode st = n.putObject("stageDurations");
+                for (Map.Entry<String, Integer> e : t.getStageDurations().entrySet()) {
+                    st.put(e.getKey(), e.getValue());
+                }
+            }
             n.put("dependency", nullSafe(t.getDependency()));
             n.put("bounceCount", t.getBounceCount());
             n.put("insight", nullSafe(firstNonBlank(t.getInsight(), t.getReasoning())));
@@ -1877,5 +1965,7 @@ public class AgentChatService {
     private static final class IntentScratchpad {
         String lastIntent;
         final List<String> recentUserQueries = new ArrayList<>();
+        final List<String> lastReferencedTicketIds = new ArrayList<>();
+        String lastAssigneeFragment;
     }
 }

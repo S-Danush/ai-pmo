@@ -4,6 +4,7 @@ import com.aipmo.agent.dto.AgentRunResponse;
 import com.aipmo.agent.dto.DeliveryTrendDto;
 import com.aipmo.agent.dto.DeliveryTrendPointDto;
 import com.aipmo.agent.dto.ProjectHealthDto;
+import com.aipmo.agent.dto.ProjectSummaryBundle;
 import com.aipmo.agent.dto.ProjectSummaryDto;
 import com.aipmo.agent.dto.TicketDataLoad;
 import com.aipmo.agent.dto.TicketSuggestionDto;
@@ -106,7 +107,26 @@ public class AgentController {
                             .avgPrHours(s.avgPrHours())
                             .avgDwellHours(s.avgDwellHours())
                             .ticketCount(s.ticketCount())
+                            .doneCount(s.doneCount())
+                            .avgTotalTatHours(s.avgTotalTatHours())
+                            .velocityTicketsPerDay(s.velocityTicketsPerDay())
                             .build());
+        }
+        if (points.isEmpty()) {
+            runMetricsHistory
+                    .previewSnapshot(resolveMergedInsights().getTickets())
+                    .ifPresent(
+                            s ->
+                                    points.add(
+                                            DeliveryTrendPointDto.builder()
+                                                    .recordedAt(s.recordedAt().toString())
+                                                    .avgPrHours(s.avgPrHours())
+                                                    .avgDwellHours(s.avgDwellHours())
+                                                    .ticketCount(s.ticketCount())
+                                                    .doneCount(s.doneCount())
+                                                    .avgTotalTatHours(s.avgTotalTatHours())
+                                                    .velocityTicketsPerDay(s.velocityTicketsPerDay())
+                                                    .build()));
         }
         return DeliveryTrendDto.builder().snapshots(points).build();
     }
@@ -120,12 +140,14 @@ public class AgentController {
             TicketDataLoad load = ticketDataService.loadTicketData();
             List<Ticket> analyzed = metricsService.analyzeTickets(load.tickets());
             DashboardSort.sortForManager(analyzed);
-            ProjectSummaryDto summary = projectSummaryService.summarize(analyzed, load);
+            ProjectSummaryBundle bundle = projectSummaryService.summarizeWithDelivery(analyzed, load);
+            ProjectSummaryDto summary = bundle.getSummary();
             base =
                     AgentRunResponse.builder()
                             .tickets(analyzed)
                             .projectSummary(summary)
                             .projectHealth(ProjectHealthDto.from(analyzed))
+                            .deliveryCards(bundle.getDeliveryCards())
                             .simulation(true)
                             .generatedAt(Instant.now().toString())
                             .build();
@@ -139,6 +161,7 @@ public class AgentController {
                 .tickets(merged)
                 .projectSummary(r.getProjectSummary())
                 .projectHealth(r.getProjectHealth())
+                .deliveryCards(r.getDeliveryCards() != null ? r.getDeliveryCards() : List.of())
                 .simulation(r.isSimulation())
                 .generatedAt(
                         r.getGeneratedAt() != null && !r.getGeneratedAt().isBlank()

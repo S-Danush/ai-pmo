@@ -1,4 +1,6 @@
 <div class="ta-page">
+  <app-loading-overlay [active]="loading" label="Loading team analytics…" />
+
   <header class="ta-head">
     <div>
       <h1>Team</h1>
@@ -8,12 +10,6 @@
   </header>
 
   <p class="ta-err" *ngIf="error">{{ error }}</p>
-
-  <div class="ta-skel" *ngIf="loading && !data">
-    <div class="skel kpi"></div>
-    <div class="skel kpi"></div>
-    <div class="skel kpi"></div>
-  </div>
 
   <ng-container *ngIf="data as d">
     <section class="ta-kpis" aria-label="Team overview">

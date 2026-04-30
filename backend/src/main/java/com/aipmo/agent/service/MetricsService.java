@@ -15,8 +15,11 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -529,5 +532,74 @@ public class MetricsService {
             return sorted.get(mid);
         }
         return (sorted.get(mid - 1) + sorted.get(mid)) / 2.0;
+    }
+
+    /** Portfolio-level stage TaT averages and short bottleneck phrases for executive UI. */
+    public record StageTatStats(Map<String, Double> avgStageTat, Map<String, String> stageInsights) {}
+
+    public StageTatStats computeStageTatAggregates(List<Ticket> tickets) {
+        Map<String, Double> avg = new LinkedHashMap<>();
+        Map<String, String> insights = new LinkedHashMap<>();
+        if (tickets == null || tickets.isEmpty()) {
+            return new StageTatStats(avg, insights);
+        }
+        Map<String, List<Integer>> byStage = new LinkedHashMap<>();
+        for (String st : SimulationDataService.SDLC_STAGES) {
+            byStage.put(st, new ArrayList<>());
+        }
+        for (Ticket t : tickets) {
+            Map<String, Integer> sd = t.getStageDurations();
+            if (sd == null || sd.isEmpty()) {
+                continue;
+            }
+            for (String st : SimulationDataService.SDLC_STAGES) {
+                Integer v = sd.get(st);
+                if (v != null && v > 0) {
+                    byStage.get(st).add(v);
+                }
+            }
+        }
+        List<Double> stageMeans = new ArrayList<>();
+        for (String st : SimulationDataService.SDLC_STAGES) {
+            List<Integer> vals = byStage.get(st);
+            if (vals == null || vals.isEmpty()) {
+                avg.put(st, 0.0);
+                continue;
+            }
+            double mean = vals.stream().mapToInt(Integer::intValue).average().orElse(0.0);
+            avg.put(st, Math.round(mean * 10.0) / 10.0);
+            stageMeans.add(mean);
+        }
+        double baseline =
+                stageMeans.isEmpty()
+                        ? 0.0
+                        : stageMeans.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        if (baseline <= 0) {
+            baseline = 1.0;
+        }
+        for (String st : SimulationDataService.SDLC_STAGES) {
+            double m = avg.getOrDefault(st, 0.0);
+            if (m < 8) {
+                continue;
+            }
+            double ratio = m / baseline;
+            if (ratio >= 1.95 && "DEV".equals(st)) {
+                insights.put(st, "DEV is taking ~" + String.format(Locale.US, "%.1f", ratio) + "× the portfolio norm — engineering dwell.");
+            } else if (ratio >= 1.95 && "REVIEW".equals(st)) {
+                insights.put(st, "Review cycle is unusually long vs peers.");
+            } else if (ratio >= 1.85 && "QA".equals(st)) {
+                insights.put(st, "QA stage is accumulating backlog relative to other stages.");
+            } else if (ratio >= 1.85 && "UAT".equals(st)) {
+                insights.put(st, "UAT sign-off is stretching compared with earlier stages.");
+            } else if ("BACKLOG".equals(st) && ratio >= 1.8) {
+                insights.put(st, "Work is aging longer in backlog before execution.");
+            }
+        }
+        double qaM = avg.getOrDefault("QA", 0.0);
+        double devM = avg.getOrDefault("DEV", 0.0);
+        if (qaM > devM && qaM >= 28 && !insights.containsKey("QA")) {
+            insights.put("QA", "QA stage hours exceed development — likely rework or test capacity.");
+        }
+        return new StageTatStats(avg, insights);
     }
 }

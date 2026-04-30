@@ -3,6 +3,7 @@ package com.aipmo.agent.controller;
 import com.aipmo.agent.service.ScenarioService;
 import com.aipmo.agent.service.SimulationScenarioTier;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +20,11 @@ public class ScenarioController {
 
     public ScenarioController(ScenarioService scenarioService) {
         this.scenarioService = scenarioService;
+    }
+
+    @GetMapping("/current")
+    public Map<String, String> currentScenario() {
+        return Map.of("scenario", scenarioService.currentTier().name());
     }
 
     @PostMapping("/{type}")

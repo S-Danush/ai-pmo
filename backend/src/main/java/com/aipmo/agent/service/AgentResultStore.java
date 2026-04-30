@@ -3,14 +3,18 @@ package com.aipmo.agent.service;
 import com.aipmo.agent.dto.AgentRunResponse;
 import com.aipmo.agent.dto.DataQuality;
 import com.aipmo.agent.dto.RootCauseDto;
+import com.aipmo.agent.dto.DeliveryTicketCardDto;
 import com.aipmo.agent.dto.ProjectHealthDto;
 import com.aipmo.agent.dto.ProjectSummaryDto;
+import com.aipmo.agent.dto.StageTimelineEntryDto;
 import com.aipmo.agent.model.Ticket;
 import com.aipmo.agent.util.TicketDisplayMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -49,6 +53,7 @@ public class AgentResultStore {
                 .tickets(tickets)
                 .projectSummary(copySummary(in.getProjectSummary()))
                 .projectHealth(copyHealth(in.getProjectHealth()))
+                .deliveryCards(copyDeliveryCards(in.getDeliveryCards()))
                 .simulation(in.isSimulation())
                 .generatedAt(in.getGeneratedAt())
                 .build();
@@ -85,10 +90,57 @@ public class AgentResultStore {
                 .projectRiskSummary(s.getProjectRiskSummary())
                 .deliveryInsight(s.getDeliveryInsight())
                 .portfolioDeliveryRisk(s.getPortfolioDeliveryRisk())
+                .avgStageTat(s.getAvgStageTat())
+                .stageInsights(s.getStageInsights())
+                .predictedGoLiveDate(s.getPredictedGoLiveDate())
+                .deliveryVelocity(s.getDeliveryVelocity())
+                .slowestStage(s.getSlowestStage())
+                .deliveryConfidence(s.getDeliveryConfidence())
+                .predictionReason(s.getPredictionReason())
                 .dataQuality(s.getDataQuality() != null ? s.getDataQuality() : DataQuality.MOCK)
                 .prDataAvailable(s.isPrDataAvailable())
                 .jiraDataAvailable(s.isJiraDataAvailable())
                 .build();
+    }
+
+    private static List<DeliveryTicketCardDto> copyDeliveryCards(List<DeliveryTicketCardDto> cards) {
+        if (cards == null || cards.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<DeliveryTicketCardDto> out = new ArrayList<>(cards.size());
+        for (DeliveryTicketCardDto c : cards) {
+            if (c == null) {
+                continue;
+            }
+            List<StageTimelineEntryDto> tl = new ArrayList<>();
+            if (c.getStageTimeline() != null) {
+                for (StageTimelineEntryDto e : c.getStageTimeline()) {
+                    if (e == null) {
+                        continue;
+                    }
+                    tl.add(
+                            StageTimelineEntryDto.builder()
+                                    .stage(e.getStage())
+                                    .hours(e.getHours())
+                                    .build());
+                }
+            }
+            out.add(
+                    DeliveryTicketCardDto.builder()
+                            .ticketId(c.getTicketId())
+                            .title(c.getTitle())
+                            .assignee(c.getAssignee())
+                            .currentStage(c.getCurrentStage())
+                            .totalHours(c.getTotalHours())
+                            .estimatedCompletion(c.getEstimatedCompletion())
+                            .taskComplexity(c.getTaskComplexity())
+                            .timelineNote(c.getTimelineNote())
+                            .deliveryStatus(c.getDeliveryStatus())
+                            .stageTimeline(tl)
+                            .slowStageWarning(c.getSlowStageWarning())
+                            .build());
+        }
+        return out;
     }
 
     private static Ticket copyTicket(Ticket t) {
@@ -144,6 +196,8 @@ public class AgentResultStore {
                 .deployEnvironment(t.getDeployEnvironment())
                 .prAgeHours(t.getPrAgeHours())
                 .reviewerDelayHours(t.getReviewerDelayHours())
+                .stageDurations(copyStageMap(t.getStageDurations()))
+                .totalTat(t.getTotalTat())
                 .flags(t.getFlags() != null ? new ArrayList<>(t.getFlags()) : new ArrayList<>())
                 .insight(t.getInsight())
                 .nudge(t.getNudge())
@@ -166,5 +220,12 @@ public class AgentResultStore {
                 .prDataAvailable(t.isPrDataAvailable())
                 .lastNotifiedAt(t.getLastNotifiedAt())
                 .build();
+    }
+
+    private static Map<String, Integer> copyStageMap(Map<String, Integer> in) {
+        if (in == null || in.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        return new LinkedHashMap<>(in);
     }
 }

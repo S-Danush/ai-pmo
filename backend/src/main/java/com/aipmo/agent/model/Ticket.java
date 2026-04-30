@@ -10,7 +10,9 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder(toBuilder = true)
@@ -48,6 +50,15 @@ public class Ticket {
     private String flagSummary;
     /** Capped time in current Jira status (hours). */
     private int timeInState;
+    /**
+     * Simulated hours spent in each SDLC stage (synthetic dataset). Keys e.g. BACKLOG, DEV, REVIEW,
+     * QA, UAT, DONE — {@link #totalTat} equals the sum of values.
+     */
+    @Builder.Default
+    private Map<String, Integer> stageDurations = new LinkedHashMap<>();
+
+    /** Sum of {@link #stageDurations} values (hours). */
+    private int totalTat;
     private int prTime;
     @Builder.Default
     private int statusChanges = 0;

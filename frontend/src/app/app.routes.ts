@@ -15,6 +15,9 @@ export const routes: Routes = [
     component: ShellComponent,
     children: [
       { path: '', component: DashboardComponent, data: { section: 'overview' } },
+      { path: 'insights', redirectTo: '', pathMatch: 'full' },
+      { path: 'delivery-analytics', component: DashboardComponent, data: { section: 'delivery-analytics' } },
+      { path: 'agent-actions', component: DashboardComponent, data: { section: 'agent-actions' } },
       { path: 'tickets', component: DashboardComponent, data: { section: 'tickets' } },
       { path: 'bottlenecks', component: DashboardComponent, data: { section: 'bottlenecks' } },
       { path: 'team', component: TeamAnalyticsComponent },

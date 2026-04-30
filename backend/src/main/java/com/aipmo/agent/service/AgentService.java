@@ -3,7 +3,9 @@ package com.aipmo.agent.service;
 import com.aipmo.agent.dto.AiInsightOutcome;
 import com.aipmo.agent.dto.AgentRunResponse;
 import com.aipmo.agent.dto.DataQuality;
+import com.aipmo.agent.dto.DeliveryTicketCardDto;
 import com.aipmo.agent.dto.ProjectHealthDto;
+import com.aipmo.agent.dto.ProjectSummaryBundle;
 import com.aipmo.agent.dto.ProjectSummaryDto;
 import com.aipmo.agent.dto.TicketDataLoad;
 import com.aipmo.agent.dto.TicketInsightPayload;
@@ -20,8 +22,11 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class AgentService {
@@ -37,6 +42,7 @@ public class AgentService {
     private final RunMetricsHistory runMetricsHistory;
     private final EscalationTracker escalationTracker;
     private final NotifyStateStore notifyStateStore;
+    private final ProactiveAgentService proactiveAgentService;
 
     public AgentService(
             TicketDataService ticketDataService,
@@ -47,7 +53,8 @@ public class AgentService {
             AiAnalysisCache aiAnalysisCache,
             RunMetricsHistory runMetricsHistory,
             EscalationTracker escalationTracker,
-            NotifyStateStore notifyStateStore) {
+            NotifyStateStore notifyStateStore,
+            ProactiveAgentService proactiveAgentService) {
         this.ticketDataService = ticketDataService;
         this.metricsService = metricsService;
         this.groqInsightService = groqInsightService;
@@ -57,6 +64,7 @@ public class AgentService {
         this.runMetricsHistory = runMetricsHistory;
         this.escalationTracker = escalationTracker;
         this.notifyStateStore = notifyStateStore;
+        this.proactiveAgentService = proactiveAgentService;
     }
 
     public AgentRunResponse runAgent() {
@@ -86,7 +94,9 @@ public class AgentService {
             int outlierCount = countOutliers(analyzed);
             log.info("Flagged outlierCount={} tickets as outliers (HIGH or MEDIUM severity)", outlierCount);
 
-            ProjectSummaryDto summary = projectSummaryService.summarize(analyzed, dataLoad);
+            ProjectSummaryBundle bundle = projectSummaryService.summarizeWithDelivery(analyzed, dataLoad);
+            ProjectSummaryDto summary = bundle.getSummary();
+            List<DeliveryTicketCardDto> deliveryCards = bundle.getDeliveryCards();
 
             for (Ticket t : analyzed) {
                 if (!isOutlier(t)) {
@@ -94,11 +104,21 @@ public class AgentService {
                 }
             }
 
+            Set<String> proactiveIds =
+                    proactiveAgentService.identifyOutliers(analyzed).stream()
+                            .map(Ticket::getId)
+                            .filter(id -> id != null && !id.isBlank())
+                            .collect(Collectors.toSet());
+
             List<Ticket> enriched = new ArrayList<>();
             int aiOutliersProcessed = 0;
             for (Ticket ticket : analyzed) {
                 PipelineMdc.clearStageAction();
                 if (!isOutlier(ticket)) {
+                    enriched.add(stripAiFields(ticket));
+                    continue;
+                }
+                if (!proactiveIds.contains(ticket.getId())) {
                     enriched.add(stripAiFields(ticket));
                     continue;
                 }
@@ -197,6 +217,11 @@ public class AgentService {
                                 .deployEnvironment(ticket.getDeployEnvironment())
                                 .prAgeHours(ticket.getPrAgeHours())
                                 .reviewerDelayHours(ticket.getReviewerDelayHours())
+                                .stageDurations(
+                                        ticket.getStageDurations() != null
+                                                ? new LinkedHashMap<>(ticket.getStageDurations())
+                                                : new LinkedHashMap<>())
+                                .totalTat(ticket.getTotalTat())
                                 .flags(new ArrayList<>(ticket.getFlags()))
                                 .insight(insightText)
                                 .nudge(nudge)
@@ -236,6 +261,7 @@ public class AgentService {
                             .tickets(mergedNotify)
                             .projectSummary(summary)
                             .projectHealth(health)
+                            .deliveryCards(deliveryCards != null ? deliveryCards : List.of())
                             .simulation(true)
                             .generatedAt(Instant.now().toString())
                             .build();
@@ -332,6 +358,11 @@ public class AgentService {
                 .deployEnvironment(ticket.getDeployEnvironment())
                 .prAgeHours(ticket.getPrAgeHours())
                 .reviewerDelayHours(ticket.getReviewerDelayHours())
+                .stageDurations(
+                        ticket.getStageDurations() != null
+                                ? new LinkedHashMap<>(ticket.getStageDurations())
+                                : new LinkedHashMap<>())
+                .totalTat(ticket.getTotalTat())
                 .flags(ticket.getFlags() != null ? new ArrayList<>(ticket.getFlags()) : new ArrayList<>())
                 .rootCause(ticket.getRootCause())
                 .rootCauseAnalysis(ticket.getRootCauseAnalysis())

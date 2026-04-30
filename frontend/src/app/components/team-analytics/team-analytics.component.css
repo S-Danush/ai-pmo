@@ -17,6 +17,7 @@
   font-size: 1.45rem;
   font-weight: 750;
   letter-spacing: -0.03em;
+  color: var(--text);
 }
 
 .ta-sub {
@@ -42,7 +43,7 @@
 }
 
 .ta-err {
-  color: #f87171;
+  color: var(--state-blocked);
   font-size: 0.88rem;
 }
 
@@ -102,6 +103,7 @@
   font-weight: 750;
   margin-top: 0.25rem;
   display: block;
+  color: var(--text);
 }
 
 .ta-filters {

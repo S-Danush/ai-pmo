@@ -26,4 +26,8 @@ public class AgentRunResponse {
 
     /** ISO-8601 timestamp when this payload was produced (dashboard “Last updated”). */
     private String generatedAt;
+
+    /** Card-based delivery view — Groq-enriched ETAs + timelines. */
+    @Builder.Default
+    private List<DeliveryTicketCardDto> deliveryCards = new ArrayList<>();
 }

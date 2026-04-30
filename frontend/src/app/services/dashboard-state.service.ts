@@ -4,6 +4,8 @@ export type MainTab = 'dashboard';
 
 export type SidebarSection =
   | 'overview'
+  | 'delivery-analytics'
+  | 'agent-actions'
   | 'tickets'
   | 'bottlenecks'
   | 'team-analytics'

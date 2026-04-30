@@ -6,12 +6,12 @@ import { ActivatedRoute } from '@angular/router';
 import { trigger, transition, style, animate } from '@angular/animations';
 import { forkJoin } from 'rxjs';
 import { DashboardStateService, SidebarSection } from '../../services/dashboard-state.service';
+import { LoadingOverlayComponent } from '../ui/loading-overlay.component';
 import {
   AgentRunResponse,
   ApiEnvelope,
   ApiService,
-  DeliveryTrend,
-  DeliveryTrendPoint,
+  DeliveryTicketCard,
   ManualNotifyResponse,
   ProjectHealth,
   ProjectSummary,
@@ -31,7 +31,7 @@ export interface KeyInsightBlock {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LoadingOverlayComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
   animations: [
@@ -55,9 +55,11 @@ export class DashboardComponent implements OnInit {
   suggestions: TicketSuggestion[] = [];
   projectSummary: ProjectSummary | null = null;
   projectHealth: ProjectHealth | null = null;
-  deliveryTrend: DeliveryTrend | null = null;
+  deliveryCards: DeliveryTicketCard[] = [];
   generatedAt: string | null = null;
   loading = false;
+  /** True until initial insights + suggestions load completes. */
+  pageLoading = true;
   error: string | null = null;
 
   notifyingIds: Record<string, boolean> = {};
@@ -66,8 +68,6 @@ export class DashboardComponent implements OnInit {
 
   selectedTicket: Ticket | null = null;
   showExplainability = false;
-
-  runView: 'current' | 'previous' = 'current';
 
   filtersExpanded = true;
 
@@ -78,6 +78,15 @@ export class DashboardComponent implements OnInit {
     readonly dash: DashboardStateService,
     private readonly route: ActivatedRoute,
   ) {}
+
+  /** Full-screen loader while fetching dashboard data or running the agent. */
+  showLoadingOverlay(): boolean {
+    return this.pageLoading || this.loading;
+  }
+
+  loadingOverlayLabel(): string {
+    return this.loading ? 'Running agent…' : 'Loading workspace…';
+  }
 
   ngOnInit(): void {
     this.route.data.subscribe((d) => {
@@ -133,20 +142,46 @@ export class DashboardComponent implements OnInit {
   }
 
   loadDashboard(): void {
+    this.pageLoading = true;
     this.error = null;
     forkJoin({
       insights: this.api.getInsights(),
       suggestions: this.api.getSuggestions(),
-      trend: this.api.getDeliveryTrend(),
     }).subscribe({
-      next: ({ insights, suggestions, trend }) => {
+      next: ({ insights, suggestions }) => {
         this.applyRunResponse(insights);
         this.suggestions = suggestions ?? [];
         this.syncPendingSuggestions();
-        this.deliveryTrend = trend ?? null;
+        this.pageLoading = false;
       },
-      error: (e: unknown) => (this.error = this.errMessage(e, 'Unable to load dashboard')),
+      error: (e: unknown) => {
+        this.pageLoading = false;
+        this.error = this.errMessage(e, 'Unable to load dashboard');
+      },
     });
+  }
+
+  stageInsightList(): { stage: string; text: string }[] {
+    const si = this.projectSummary?.stageInsights;
+    if (!si) {
+      return [];
+    }
+    return Object.entries(si).map(([stage, text]) => ({ stage, text }));
+  }
+
+  stageDurationEntries(t: Ticket): { k: string; v: number }[] {
+    const sd = t.stageDurations;
+    if (!sd) {
+      return [];
+    }
+    return Object.entries(sd).map(([k, v]) => ({ k, v: v ?? 0 }));
+  }
+
+  hasExplainabilityDetail(t: Ticket): boolean {
+    return (
+      (t.explainabilityFactors?.length ?? 0) > 0 ||
+      !!(t.stageDurations && Object.keys(t.stageDurations).length > 0)
+    );
   }
 
   toggleExplainability(): void {
@@ -188,10 +223,6 @@ export class DashboardComponent implements OnInit {
             this.syncPendingSuggestions();
           },
           error: () => (this.suggestions = []),
-        });
-        this.api.getDeliveryTrend().subscribe({
-          next: (t) => (this.deliveryTrend = t ?? null),
-          error: () => {},
         });
         this.loading = false;
       },
@@ -510,16 +541,6 @@ export class DashboardComponent implements OnInit {
   }
 
   riskTrendPoints(): { label: string; y: number }[] {
-    const snaps = this.deliveryTrendSnapshots();
-    if (snaps.length >= 2) {
-      const scores = snaps.map((s) => s.avgDwellHours * 0.62 + s.avgPrHours * 0.38);
-      const min = Math.min(...scores);
-      const max = Math.max(...scores, min + 0.01);
-      return snaps.map((s, i) => ({
-        label: this.shortIsoDate(s.recordedAt),
-        y: Math.round(((scores[i]! - min) / (max - min)) * 100),
-      }));
-    }
     const tk = this.scopedTickets();
     const stress = Math.min(
       100,
@@ -550,14 +571,6 @@ export class DashboardComponent implements OnInit {
       .join(' ');
   }
 
-  private shortIsoDate(iso: string): string {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) {
-      return iso.slice(5, 10);
-    }
-    return `${d.getMonth() + 1}/${d.getDate()}`;
-  }
-
   normalizePriority(t: Ticket): string {
     const p = (t.priority ?? '').trim().toLowerCase();
     if (p === 'critical') {
@@ -583,54 +596,6 @@ export class DashboardComponent implements OnInit {
   closeTicketPanel(): void {
     this.selectedTicket = null;
     this.showExplainability = false;
-  }
-
-  runPair(): { cur: DeliveryTrendPoint; prev: DeliveryTrendPoint } | null {
-    const snaps = this.deliveryTrendSnapshots();
-    if (this.runView === 'current') {
-      if (snaps.length < 2) {
-        return null;
-      }
-      const n = snaps.length;
-      return { cur: snaps[n - 1]!, prev: snaps[n - 2]! };
-    }
-    if (snaps.length < 3) {
-      return null;
-    }
-    const n = snaps.length;
-    return { cur: snaps[n - 2]!, prev: snaps[n - 3]! };
-  }
-
-  runComparisonBullets(): { newRisks: string[]; resolved: string[] } {
-    const pair = this.runPair();
-    const newRisks: string[] = [];
-    const resolved: string[] = [];
-    if (!pair) {
-      newRisks.push(
-        this.runView === 'previous'
-          ? 'At least three insight periods are required to compare the previous window.'
-          : 'At least two insight refreshes are required to compare dwell and PR cycle across periods.',
-      );
-      return { newRisks, resolved };
-    }
-    const cur = pair.cur;
-    const prev = pair.prev;
-    if (cur.avgDwellHours > prev.avgDwellHours * 1.08) {
-      newRisks.push(`Average dwell increased (${prev.avgDwellHours.toFixed(1)}h → ${cur.avgDwellHours.toFixed(1)}h).`);
-    }
-    if (cur.avgPrHours > prev.avgPrHours * 1.08) {
-      newRisks.push(`PR cycle lengthened (${prev.avgPrHours.toFixed(1)}h → ${cur.avgPrHours.toFixed(1)}h).`);
-    }
-    if (cur.avgDwellHours < prev.avgDwellHours * 0.92) {
-      resolved.push(`Flow improved: avg dwell down (${prev.avgDwellHours.toFixed(1)}h → ${cur.avgDwellHours.toFixed(1)}h).`);
-    }
-    if (cur.avgPrHours < prev.avgPrHours * 0.92) {
-      resolved.push(`PR throughput improved (${prev.avgPrHours.toFixed(1)}h → ${cur.avgPrHours.toFixed(1)}h).`);
-    }
-    if (!newRisks.length && !resolved.length) {
-      newRisks.push('No major swing between these runs — signals are stable.');
-    }
-    return { newRisks, resolved };
   }
 
   suggestionsTop(): TicketSuggestion[] {
@@ -708,6 +673,7 @@ export class DashboardComponent implements OnInit {
     this.tickets = r.tickets ?? [];
     this.projectSummary = r.projectSummary ?? null;
     this.projectHealth = r.projectHealth ?? null;
+    this.deliveryCards = r.deliveryCards ?? [];
     this.generatedAt = r.generatedAt ?? null;
     this.syncNotifiedPreview();
     this.syncPendingSuggestions();
@@ -781,6 +747,41 @@ export class DashboardComponent implements OnInit {
     return d.toLocaleString();
   }
 
+  deliveryBadgeClass(status: string | null | undefined): string {
+    const s = (status ?? '').toUpperCase();
+    if (s.includes('DELAY')) {
+      return 'd-badge d-badge--delayed';
+    }
+    if (s.includes('RISK')) {
+      return 'd-badge d-badge--risk';
+    }
+    return 'd-badge d-badge--ontrack';
+  }
+
+  deliveryBadgeLabel(status: string | null | undefined): string {
+    const s = (status ?? '').toUpperCase();
+    if (s.includes('DELAY')) {
+      return 'Delayed';
+    }
+    if (s.includes('RISK')) {
+      return 'At risk';
+    }
+    return 'On track';
+  }
+
+  /** Delivery tab: open / in-flight tickets first, then completed. */
+  deliveryCardsView(): DeliveryTicketCard[] {
+    const rows = this.deliveryCards ?? [];
+    return [...rows].sort((a, b) => {
+      const aDone = a.estimatedCompletion === 'Complete' ? 1 : 0;
+      const bDone = b.estimatedCompletion === 'Complete' ? 1 : 0;
+      if (aDone !== bDone) {
+        return aDone - bDone;
+      }
+      return (a.ticketId ?? '').localeCompare(b.ticketId ?? '');
+    });
+  }
+
   kpiTotalTickets(): number {
     return this.projectSummary?.totalTickets ?? this.tickets.length;
   }
@@ -835,34 +836,6 @@ export class DashboardComponent implements OnInit {
       return '↓';
     }
     return '→';
-  }
-
-  deliveryTrendLines(): string[] {
-    const snaps = this.deliveryTrend?.snapshots ?? [];
-    if (snaps.length >= 2) {
-      const prev = snaps[snaps.length - 2];
-      const cur = snaps[snaps.length - 1];
-      const lines: string[] = [];
-      const prPct = this.pctChange(prev.avgPrHours, cur.avgPrHours);
-      const dwellPct = this.pctChange(prev.avgDwellHours, cur.avgDwellHours);
-      if (prPct != null) {
-        const up = prPct > 0;
-        lines.push(
-          `PR cycle (batch average) ${up ? 'increased' : prPct < 0 ? 'decreased' : 'held steady'}${prPct !== 0 ? ` by ${Math.abs(Math.round(prPct))}%` : ''} vs the prior period.`,
-        );
-      }
-      if (dwellPct != null) {
-        const up = dwellPct > 0;
-        lines.push(
-          `Average dwell in status ${up ? 'increased' : dwellPct < 0 ? 'decreased' : 'held steady'}${dwellPct !== 0 ? ` by ${Math.abs(Math.round(dwellPct))}%` : ''} vs the prior period — ${up ? 'delivery risk is building' : dwellPct < 0 ? 'flow is improving' : 'no material shift'}.`,
-        );
-      }
-      return lines.length ? lines : ['No measurable change between the last two periods.'];
-    }
-    if (snaps.length === 1 && this.projectSummary?.trendSummary) {
-      return [this.projectSummary.trendSummary];
-    }
-    return ['Compare periods after at least two insight refreshes to see dwell and PR cycle trends.'];
   }
 
   parsePortfolioRead(): { lead: string; bullets: string[] } {
@@ -943,23 +916,6 @@ export class DashboardComponent implements OnInit {
 
   whyPortfolioHeading(): string {
     return `Why the portfolio is ${this.statusLabelShort()}`;
-  }
-
-  trendBarHeight(dwell: number): number {
-    const snaps = this.deliveryTrendSnapshots();
-    if (!snaps.length) {
-      return 20;
-    }
-    const max = Math.max(...snaps.map((s) => s.avgDwellHours), 1);
-    return Math.max(8, Math.round((dwell / max) * 100));
-  }
-
-  deliveryTrendSnapshots(): DeliveryTrendPoint[] {
-    return this.deliveryTrend?.snapshots ?? [];
-  }
-
-  trendBarTitle(s: DeliveryTrendPoint): string {
-    return `${s.recordedAt}: ${s.avgDwellHours.toFixed(1)}h avg dwell`;
   }
 
   humanizeTopBottleneck(code: string | null | undefined): string | null {
@@ -1486,13 +1442,6 @@ export class DashboardComponent implements OnInit {
         action: s.recommendedAction,
       })),
     );
-  }
-
-  private pctChange(prev: number, cur: number): number | null {
-    if (prev <= 0) {
-      return null;
-    }
-    return ((cur - prev) / prev) * 100;
   }
 
   uniqueAssignees(): { value: string; label: string }[] {

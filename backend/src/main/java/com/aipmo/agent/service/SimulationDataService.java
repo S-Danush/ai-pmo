@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
@@ -128,6 +129,9 @@ public class SimulationDataService {
                         || git.commitCount() > 0
                         || "MERGED".equals(git.normalizedPrStatus());
 
+        LinkedHashMap<String, Integer> stages = buildStageDurations(s, tier, rowRnd);
+        int totalTat = stages.values().stream().mapToInt(Integer::intValue).sum();
+
         return Ticket.builder()
                 .id(s.id)
                 .summary(s.title)
@@ -165,7 +169,91 @@ public class SimulationDataService {
                 .deployEnvironment(git.deployEnvironment())
                 .prAgeHours(git.prAgeHours())
                 .reviewerDelayHours(git.reviewerDelayHours())
+                .stageDurations(stages)
+                .totalTat(totalTat)
                 .build();
+    }
+
+    /** Fixed SDLC labels for TaT charts — order preserved in JSON. */
+    public static final List<String> SDLC_STAGES =
+            List.of("BACKLOG", "DEV", "REVIEW", "QA", "UAT", "DONE");
+
+    /**
+     * Deterministic stage-hour breakdown: varies by row (stuck DEV, slow REVIEW, bouncing QA) and
+     * scenario tier. {@code totalTat} is always the sum of all stage values.
+     */
+    static LinkedHashMap<String, Integer> buildStageDurations(
+            SimScenario s, SimulationScenarioTier tier, Random rowRnd) {
+        double tierMul =
+                switch (tier) {
+                    case GREEN -> 0.62;
+                    case RED -> 1.42;
+                    default -> 1.0;
+                };
+        int targetTotal =
+                (int)
+                        Math.round(
+                                (88 + s.index * 4 + rowRnd.nextInt(52) + s.timeInStateHours * 0.35)
+                                        * tierMul);
+        targetTotal = Math.max(72, Math.min(560, targetTotal));
+
+        double backlog = 10 + rowRnd.nextInt(22);
+        double dev = 26 + rowRnd.nextInt(40);
+        double review = 16 + rowRnd.nextInt(32);
+        double qa = 14 + rowRnd.nextInt(26) + s.bounceCount * 9.0;
+        double uat = 8 + rowRnd.nextInt(20);
+        double done = "Done".equals(s.wfStatus.jira) ? 12 + rowRnd.nextInt(18) : 0;
+
+        if ("Backlog".equals(s.wfStatus.jira)) {
+            backlog += 42;
+        }
+        if ("In Progress".equals(s.wfStatus.jira)) {
+            dev += 22;
+            if (s.index % 11 == 1 || s.timeInStateHours >= 72) {
+                dev += 58;
+            }
+            if ("NOT_CREATED".equals(s.prStatus) && s.timeInStateHours >= 40) {
+                dev += 35;
+            }
+        }
+        if ("Review".equals(s.wfStatus.jira)) {
+            review += 52;
+        }
+        if ("Blocked".equals(s.wfStatus.jira)) {
+            qa += 28;
+            dev += 18;
+        }
+        if (s.bounceCount >= 3) {
+            qa += 48;
+        }
+        if ("Done".equals(s.wfStatus.jira)) {
+            done += 18 + rowRnd.nextInt(14);
+        }
+
+        double sum = backlog + dev + review + qa + uat + done;
+        double scale = sum > 0 ? targetTotal / sum : 1.0;
+
+        LinkedHashMap<String, Integer> m = new LinkedHashMap<>();
+        m.put("BACKLOG", Math.max(0, (int) Math.round(backlog * scale)));
+        m.put("DEV", Math.max(0, (int) Math.round(dev * scale)));
+        m.put("REVIEW", Math.max(0, (int) Math.round(review * scale)));
+        m.put("QA", Math.max(0, (int) Math.round(qa * scale)));
+        m.put("UAT", Math.max(0, (int) Math.round(uat * scale)));
+        m.put("DONE", Math.max(0, (int) Math.round(done * scale)));
+
+        int total = m.values().stream().mapToInt(Integer::intValue).sum();
+        int delta = targetTotal - total;
+        if (delta != 0) {
+            m.merge("DEV", delta, Integer::sum);
+            if (m.get("DEV") < 0) {
+                m.put("DEV", 0);
+            }
+        }
+        total = m.values().stream().mapToInt(Integer::intValue).sum();
+        if (total != targetTotal) {
+            m.merge("BACKLOG", targetTotal - total, Integer::sum);
+        }
+        return m;
     }
 
     /**

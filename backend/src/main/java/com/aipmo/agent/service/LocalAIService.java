@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -21,6 +23,51 @@ import java.util.concurrent.ThreadLocalRandom;
 public class LocalAIService {
 
     private static final Logger log = LoggerFactory.getLogger(LocalAIService.class);
+
+    /** Narrative for portfolio go-live forecast — deterministic copy tied to metrics inputs. */
+    public String buildDeliveryPredictionNarrative(
+            int remainingOpen,
+            double velocityPerDay,
+            long daysToComplete,
+            String confidence,
+            int blockedCount,
+            Map<String, String> stageInsights,
+            int prDelayCount,
+            int bouncingCount) {
+        StringBuilder sb = new StringBuilder(640);
+        sb.append(
+                String.format(
+                        Locale.ROOT,
+                        "Based on current velocity (~%.2f tickets/day), clearing ~%d open items implies on the order of %d day(s) of throughput.",
+                        velocityPerDay,
+                        remainingOpen,
+                        daysToComplete));
+        if (blockedCount > 0) {
+            sb.append(
+                    String.format(
+                            Locale.ROOT,
+                            " %d ticket(s) are blocked — each adds schedule uncertainty.",
+                            blockedCount));
+        }
+        if (stageInsights != null && !stageInsights.isEmpty()) {
+            sb.append(" Delay drivers: ");
+            sb.append(
+                    String.join(
+                            " ",
+                            stageInsights.values().stream().limit(2).collect(Collectors.toList())));
+        }
+        sb.append(" Confidence is ").append(confidence.toLowerCase(Locale.ROOT)).append(".");
+        if ("LOW".equalsIgnoreCase(confidence)) {
+            sb.append(
+                    " Elevated blocked count or churn reduces forecast reliability until queues clear.");
+        }
+        if (prDelayCount >= 5) {
+            sb.append(" Review and PR throughput are a primary bottleneck.");
+        } else if (bouncingCount >= 5) {
+            sb.append(" QA / rework churn is extending cycle time.");
+        }
+        return sb.toString().trim();
+    }
 
     private static final int STUCK_HOURS = 48;
     private static final int PR_SLOW_HOURS = 32;

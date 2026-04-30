@@ -10,11 +10,12 @@ import {
   TeamMemberAnalytics,
   WorkloadBar,
 } from '../../services/api.service';
+import { LoadingOverlayComponent } from '../ui/loading-overlay.component';
 
 @Component({
   selector: 'app-team-analytics',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LoadingOverlayComponent],
   templateUrl: './team-analytics.component.html',
   styleUrl: './team-analytics.component.css',
 })

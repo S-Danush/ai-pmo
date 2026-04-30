@@ -72,7 +72,13 @@ html {
   color-scheme: dark;
 }
 
-html.theme-light {
+html.theme-dark,
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+html.theme-light,
+html[data-theme='light'] {
   color-scheme: light;
 }
 

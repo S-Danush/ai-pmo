@@ -1,5 +1,7 @@
 package com.aipmo.agent.dto;
 
+import java.util.Map;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -33,6 +35,22 @@ public class ProjectSummaryDto {
     private String projectRiskSummary;
     /** Lightweight forecast when many tickets show long dwell; null when not triggered. */
     private String deliveryInsight;
+
+    /** Mean hours per SDLC stage across tickets (synthetic TaT). */
+    private Map<String, Double> avgStageTat;
+    /** Short bottleneck phrases keyed by stage. */
+    private Map<String, String> stageInsights;
+
+    /** ISO-8601 date (UTC) for forecast go-live. */
+    private String predictedGoLiveDate;
+    /** Human velocity line for exec UI, e.g. "≈4.2 tickets / day" from AI or derived. */
+    private String deliveryVelocity;
+    /** SDLC stage name (e.g. REVIEW) identified as the main drag. */
+    private String slowestStage;
+    /** HIGH / MEDIUM / LOW */
+    private String deliveryConfidence;
+    /** Why the forecast and confidence were chosen (AI or fallback). */
+    private String predictionReason;
 
     private DataQuality dataQuality;
     private boolean prDataAvailable;

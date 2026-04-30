@@ -16,6 +16,7 @@ import {
   ChatMessageView,
   ChatSessionSummary,
 } from '../../services/api.service';
+import { LoadingOverlayComponent } from '../ui/loading-overlay.component';
 
 const SESSION_STORAGE_KEY = 'pmo_agent_chat_session_id';
 const HISTORY_COLLAPSED_KEY = 'pmo_agent_chat_history_collapsed';
@@ -32,7 +33,7 @@ interface ChatMessage {
 @Component({
   selector: 'app-ai-agent',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LoadingOverlayComponent],
   templateUrl: './ai-agent.component.html',
   styleUrl: './ai-agent.component.scss',
 })

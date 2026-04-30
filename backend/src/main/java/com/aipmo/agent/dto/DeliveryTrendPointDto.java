@@ -18,4 +18,7 @@ public class DeliveryTrendPointDto {
     private double avgPrHours;
     private double avgDwellHours;
     private int ticketCount;
+    private int doneCount;
+    private double avgTotalTatHours;
+    private double velocityTicketsPerDay;
 }

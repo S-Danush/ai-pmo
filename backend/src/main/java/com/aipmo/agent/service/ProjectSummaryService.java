@@ -2,10 +2,12 @@ package com.aipmo.agent.service;
 
 import com.aipmo.agent.dto.DataQuality;
 import com.aipmo.agent.dto.ProjectStatus;
+import com.aipmo.agent.dto.ProjectSummaryBundle;
 import com.aipmo.agent.dto.ProjectSummaryDto;
 import com.aipmo.agent.dto.TicketDataLoad;
 import com.aipmo.agent.model.Ticket;
 import com.aipmo.agent.util.Severity;
+import com.aipmo.agent.util.TicketWorkflow;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -27,12 +29,23 @@ public class ProjectSummaryService {
     private static final double DEMO_BASELINE_AVG_DWELL_HOURS = 18.0;
 
     private final RunMetricsHistory runMetricsHistory;
+    private final MetricsService metricsService;
+    private final DeliveryPredictionService deliveryPredictionService;
 
-    public ProjectSummaryService(RunMetricsHistory runMetricsHistory) {
+    public ProjectSummaryService(
+            RunMetricsHistory runMetricsHistory,
+            MetricsService metricsService,
+            DeliveryPredictionService deliveryPredictionService) {
         this.runMetricsHistory = runMetricsHistory;
+        this.metricsService = metricsService;
+        this.deliveryPredictionService = deliveryPredictionService;
     }
 
     public ProjectSummaryDto summarize(List<Ticket> analyzed, TicketDataLoad dataLoad) {
+        return summarizeWithDelivery(analyzed, dataLoad).getSummary();
+    }
+
+    public ProjectSummaryBundle summarizeWithDelivery(List<Ticket> analyzed, TicketDataLoad dataLoad) {
         int total = analyzed.size();
         int stuck =
                 (int)
@@ -118,23 +131,68 @@ public class ProjectSummaryService {
                         trend);
         String deliveryInsight = buildDeliveryInsight(analyzed, total);
 
-        return ProjectSummaryDto.builder()
-                .totalTickets(total)
-                .stuckTickets(stuck)
-                .criticalTickets(critical)
-                .topBottleneck(topBottleneck)
-                .status(status)
-                .portfolioDeliveryRisk(portfolioDeliveryRisk)
-                .prDelayTrendPercent(trend)
-                .estimatedDelayDays(estDays > 0 ? estDays : null)
-                .trendSummary(trendSummary)
-                .reasonForStatus(reasonForStatus)
-                .projectRiskSummary(projectRiskSummary)
-                .deliveryInsight(deliveryInsight)
-                .dataQuality(dataQuality)
-                .prDataAvailable(prDataAvailable)
-                .jiraDataAvailable(jiraDataAvailable)
-                .build();
+        MetricsService.StageTatStats stageTat = metricsService.computeStageTatAggregates(analyzed);
+
+        int blockedCount =
+                (int)
+                        analyzed.stream()
+                                .filter(
+                                        t ->
+                                                t.getStatus() != null
+                                                        && "Blocked"
+                                                                .equalsIgnoreCase(
+                                                                        t.getStatus().trim()))
+                                .count();
+
+        ProjectSummaryDto partial =
+                ProjectSummaryDto.builder()
+                        .totalTickets(total)
+                        .stuckTickets(stuck)
+                        .criticalTickets(critical)
+                        .topBottleneck(topBottleneck)
+                        .status(status)
+                        .portfolioDeliveryRisk(portfolioDeliveryRisk)
+                        .prDelayTrendPercent(trend)
+                        .estimatedDelayDays(estDays > 0 ? estDays : null)
+                        .trendSummary(trendSummary)
+                        .reasonForStatus(reasonForStatus)
+                        .projectRiskSummary(projectRiskSummary)
+                        .deliveryInsight(deliveryInsight)
+                        .avgStageTat(stageTat.avgStageTat())
+                        .stageInsights(stageTat.stageInsights())
+                        .dataQuality(dataQuality)
+                        .prDataAvailable(prDataAvailable)
+                        .jiraDataAvailable(jiraDataAvailable)
+                        .build();
+
+        return deliveryPredictionService.mergeDeliveryLayer(
+                partial,
+                analyzed,
+                dataLoad,
+                stageTat,
+                blockedCount,
+                critical,
+                stuck,
+                prDelayCount,
+                bouncingCount);
+    }
+
+    private static String computeDeliveryConfidence(
+            int blockedCount,
+            int criticalCount,
+            int stuckTickets,
+            int prDelayCount,
+            int bouncingCount) {
+        if (blockedCount >= 6 || criticalCount >= 8) {
+            return "LOW";
+        }
+        if (stuckTickets >= 14 || prDelayCount >= 9 || bouncingCount >= 7) {
+            return "LOW";
+        }
+        if (blockedCount >= 3 || prDelayCount >= 5 || bouncingCount >= 4 || stuckTickets >= 8) {
+            return "MEDIUM";
+        }
+        return "HIGH";
     }
 
     private static int countHighPriority(List<Ticket> tickets) {

@@ -17,6 +17,12 @@ public class SuggestionService {
     private static final int MAX_ACTION_LEN = 220;
     private static final int MAX_REASON_LEN = 160;
 
+    private final ProactiveAgentService proactiveAgentService;
+
+    public SuggestionService(ProactiveAgentService proactiveAgentService) {
+        this.proactiveAgentService = proactiveAgentService;
+    }
+
     public List<TicketSuggestionDto> buildSuggestions(List<Ticket> tickets) {
         if (tickets == null || tickets.isEmpty()) {
             return List.of();
@@ -27,23 +33,35 @@ public class SuggestionService {
                 byId.putIfAbsent(t.getId(), t);
             }
         }
-        List<Ticket> picked = new ArrayList<>();
-        for (Ticket t : byId.values()) {
-            if (qualifies(t)) {
-                picked.add(t);
-            }
-        }
+        List<Ticket> picked = new ArrayList<>(proactiveAgentService.identifyOutliers(new ArrayList<>(byId.values())));
         picked.sort(
                 Comparator.comparingInt(SuggestionService::severityRank)
                         .thenComparing(Ticket::getId, String.CASE_INSENSITIVE_ORDER));
 
-        List<TicketSuggestionDto> out = new ArrayList<>(picked.size());
+        List<TicketSuggestionDto> out = new ArrayList<>();
         for (Ticket t : picked) {
             out.add(
                     new TicketSuggestionDto(
-                            t.getId(), shorten(buildReason(t), MAX_REASON_LEN), pickRecommendedAction(t)));
+                            t.getId(),
+                            shorten(buildReason(t), MAX_REASON_LEN),
+                            pickRecommendedAction(t),
+                            suggestedActionsFor(t)));
         }
         return out;
+    }
+
+    private static List<String> suggestedActionsFor(Ticket t) {
+        List<String> flags = t.getFlags() != null ? t.getFlags() : List.of();
+        List<String> actions = new ArrayList<>(3);
+        if (flags.contains(MetricsService.FLAG_BLOCKED)
+                || (t.getStatus() != null && "Blocked".equalsIgnoreCase(t.getStatus().trim()))) {
+            actions.add("Escalate");
+        }
+        if (flags.contains(MetricsService.FLAG_PR_DELAY)) {
+            actions.add("Assign reviewer");
+        }
+        actions.add("Send nudge");
+        return actions.size() > 3 ? actions.subList(0, 3) : actions;
     }
 
     private static int severityRank(Ticket t) {
@@ -58,21 +76,6 @@ public class SuggestionService {
             return 1;
         }
         return 2;
-    }
-
-    private static boolean qualifies(Ticket t) {
-        String sev = t.getSeverity();
-        if (sev != null && ("HIGH".equalsIgnoreCase(sev) || "MEDIUM".equalsIgnoreCase(sev))) {
-            return true;
-        }
-        List<String> flags = t.getFlags();
-        if (flags == null) {
-            return false;
-        }
-        return flags.contains(MetricsService.FLAG_STUCK)
-                || flags.contains(MetricsService.FLAG_PR_DELAY)
-                || flags.contains(MetricsService.FLAG_DEPENDENCY_RISK)
-                || flags.contains(MetricsService.FLAG_BOUNCING);
     }
 
     private static String pickRecommendedAction(Ticket t) {

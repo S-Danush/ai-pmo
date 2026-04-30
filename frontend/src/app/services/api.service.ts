@@ -27,6 +27,15 @@ export interface ProjectSummary {
   reasonForStatus?: string | null;
   projectRiskSummary?: string | null;
   deliveryInsight?: string | null;
+  avgStageTat?: Record<string, number> | null;
+  stageInsights?: Record<string, string> | null;
+  predictedGoLiveDate?: string | null;
+  /** AI / derived velocity phrase */
+  deliveryVelocity?: string | null;
+  /** Bottleneck SDLC stage */
+  slowestStage?: string | null;
+  deliveryConfidence?: string | null;
+  predictionReason?: string | null;
   dataQuality?: DataQuality | null;
   prDataAvailable?: boolean;
   jiraDataAvailable?: boolean;
@@ -109,6 +118,8 @@ export interface Ticket {
   lastActivityLabel?: string | null;
   viewGroup?: string | null;
   lastNotifiedAt?: string | null;
+  stageDurations?: Record<string, number> | null;
+  totalTat?: number;
 }
 
 export interface ManualNotifyResponse {
@@ -125,6 +136,26 @@ export interface TicketSuggestion {
   ticketId: string;
   reason: string;
   recommendedAction: string;
+  suggestedActions?: string[] | null;
+}
+
+export interface StageTimelineEntry {
+  stage: string;
+  hours: number;
+}
+
+export interface DeliveryTicketCard {
+  ticketId: string;
+  title?: string | null;
+  assignee?: string | null;
+  currentStage?: string | null;
+  totalHours?: number;
+  estimatedCompletion?: string | null;
+  taskComplexity?: string | null;
+  timelineNote?: string | null;
+  deliveryStatus?: string | null;
+  stageTimeline?: StageTimelineEntry[];
+  slowStageWarning?: string | null;
 }
 
 export interface AgentRunResponse {
@@ -133,6 +164,7 @@ export interface AgentRunResponse {
   projectHealth: ProjectHealth | null;
   simulation?: boolean;
   generatedAt?: string | null;
+  deliveryCards?: DeliveryTicketCard[];
 }
 
 export interface DeliveryTrendPoint {
@@ -140,6 +172,9 @@ export interface DeliveryTrendPoint {
   avgPrHours: number;
   avgDwellHours: number;
   ticketCount: number;
+  doneCount?: number;
+  avgTotalTatHours?: number;
+  velocityTicketsPerDay?: number;
 }
 
 export interface DeliveryTrend {
@@ -305,6 +340,28 @@ export class ApiService {
     return this.http
       .get<ApiEnvelope<DeliveryTrend>>(`${this.base}/api/delivery-trend`)
       .pipe(map(this.unwrap<DeliveryTrend>({ snapshots: [] })));
+  }
+
+  getScenarioCurrent(): Observable<{ scenario: string }> {
+    return this.http
+      .get<ApiEnvelope<{ scenario: string }>>(`${this.base}/api/scenario/current`)
+      .pipe(map(this.unwrap<{ scenario: string }>({ scenario: 'AMBER' })));
+  }
+
+  setScenario(tier: SimulationScenarioTier): Observable<{ scenario: string; message: string }> {
+    return this.http
+      .post<ApiEnvelope<{ scenario: string; message: string }>>(
+        `${this.base}/api/scenario/${tier}`,
+        {},
+      )
+      .pipe(
+        map(
+          this.unwrap<{ scenario: string; message: string }>({
+            scenario: tier,
+            message: '',
+          }),
+        ),
+      );
   }
 
   getTeamAnalytics(): Observable<TeamAnalyticsResponse> {
